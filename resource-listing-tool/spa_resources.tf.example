@@ -1,0 +1,100 @@
+# Generated SPA Terraform Configuration
+# This file contains resource definitions for discovered SPA resources
+# Run 'terraform import' commands to import existing resources into Terraform state
+
+terraform {
+  required_providers {
+    spa = {
+      source  = "registry.terraform.io/citrix/spa"
+      version = "0.1.0"
+    }
+  }
+}
+
+provider "spa" {
+  base_url      = var.base_url
+  customer_id   = var.customer_id
+  client_id     = var.client_id
+  client_secret = var.client_secret
+}
+
+# Variables
+variable "base_url" {
+  description = "SPA API Base URL"
+  type        = string
+  default     = "https://api.cloud.com/accessSecurity"
+}
+
+variable "customer_id" {
+  description = "Citrix Cloud Customer ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "client_id" {
+  description = "Citrix Cloud Service Principal Client ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "client_secret" {
+  description = "Citrix Cloud Service Principal Client Secret"
+  type        = string
+  sensitive   = true
+}
+
+# =============================================================================
+# RESOURCES
+# =============================================================================
+
+# Applications
+
+resource "spa_application" "web_app_1" {
+  name = "Web App 1"
+  type = "web"
+  
+  # NOTE: This is a basic configuration. You may need to add additional
+  # configuration parameters based on your specific application requirements.
+  # Refer to the spa_application resource documentation for all available options.
+}
+
+resource "spa_application" "desktop_app_2" {
+  name = "Desktop App 2"
+  type = "desktop"
+  
+  # NOTE: This is a basic configuration. You may need to add additional
+  # configuration parameters based on your specific application requirements.
+  # Refer to the spa_application resource documentation for all available options.
+}
+
+# Access Policies
+
+resource "spa_access_policy" "default_policy" {
+  name        = "Default Policy"
+  type        = "access"
+  enabled     = true
+  priority    = 1
+  description = "Default access policy"
+  
+  # NOTE: This is a basic configuration. You may need to add additional
+  # configuration parameters like conditions, actions, etc.
+  # Refer to the spa_access_policy resource documentation for all available options.
+}
+
+resource "spa_access_policy" "restricted_policy" {
+  name        = "Restricted Policy"
+  type        = "access"
+  enabled     = true
+  priority    = 2
+  description = "Restricted access policy for sensitive applications"
+  
+  # NOTE: This is a basic configuration. You may need to add additional
+  # configuration parameters like conditions, actions, etc.
+  # Refer to the spa_access_policy resource documentation for all available options.
+}
+
+# Browser Mode Configuration
+
+resource "spa_browser_mode" "current" {
+  browser_mode = "enhanced"
+}

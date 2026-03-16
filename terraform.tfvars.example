@@ -1,0 +1,19 @@
+# Copy this file to terraform.tfvars and fill in your actual values
+# DO NOT commit terraform.tfvars to version control
+
+# Required for all authentication methods
+citrix_customer_id = "citrix-customer-id"
+base_url          = "https://api.cloud.com"
+
+# Authentication Method 1: Direct token authentication
+# Use this if you have a pre-generated bearer token
+# citrix_auth_token = "your-auth-token-here"
+
+# Authentication Method 2: Service Principal authentication (recommended)
+# Use these instead of citrix_auth_token for OAuth2 flow
+# Uncomment and fill in these values to use service principal authentication
+citrix_client_id     = "citrix-client-id"
+citrix_client_secret = "citrix-client-secret"
+
+# Note: Use only ONE authentication method at a time
+# Comment out citrix_auth_token if using service principal authentication

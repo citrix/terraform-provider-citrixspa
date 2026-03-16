@@ -1,0 +1,6 @@
+import_resources.py
+management_summary.md
+imports.tf
+spa_resources.tf
+temp_*.json
+tfplan

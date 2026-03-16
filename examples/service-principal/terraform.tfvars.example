@@ -1,0 +1,6 @@
+# Copy this file to terraform.tfvars and fill in your actual values
+# DO NOT commit terraform.tfvars to version control
+
+citrix_customer_id   = "your-customer-id-here"
+citrix_client_id     = "your-client-id-here"
+citrix_client_secret = "your-client-secret-here"

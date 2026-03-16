@@ -1,0 +1,74 @@
+# Generated files from import_automation.sh
+discovered_app_names.txt
+discovered_apps.txt
+
+__pycache__
+
+# Terraform files
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform/
+.terraform.lock.hcl
+terraform.tfplan
+terraform.tfstate.backup
+.terraformrc
+
+# Debug and log files
+*.log
+debug.log
+terraform-debug.log
+terraform-debug*.log
+enhanced-debug.log
+resource-discovery-debug.log
+
+# Build artifacts
+terraform-provider-spa
+dist/
+build/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Go specific
+vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+node_modules/
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+.tmp/
+
+# Resource listing tool working files
+resource-listing-tool/provider.tf
+resource-listing-tool/terraform.tfstate*
+resource-listing-tool/.terraform*
+resource-listing-tool/terraform-debug.log

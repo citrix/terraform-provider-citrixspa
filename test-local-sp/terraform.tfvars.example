@@ -1,0 +1,8 @@
+# Service Principal Authentication Example
+# Copy this file to service-principal.tfvars and fill in your actual values
+# DO NOT commit service-principal.tfvars to version control
+
+citrix_customer_id   = "your-customer-id-here"
+citrix_client_id     = "your-client-id-here"
+citrix_client_secret = "your-client-secret-here"
+base_url            = "https://api.cloud.com"
