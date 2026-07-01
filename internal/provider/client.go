@@ -8,14 +8,92 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"golang.org/x/time/rate"
 )
+
+// PerformanceMetrics tracks API request metrics for bulk/scale testing.
+// All counters use atomic operations for safe concurrent access.
+type PerformanceMetrics struct {
+	TotalRequests       atomic.Int64
+	SuccessfulRequests  atomic.Int64
+	FailedRequests      atomic.Int64
+	RateLimitHits       atomic.Int64 // 429 responses received
+	RateLimitRetryOK    atomic.Int64 // 429s that recovered after retry
+	RateLimitRetryFail  atomic.Int64 // 429s that exhausted all retries
+	TotalRateLimitDelay atomic.Int64 // Nanoseconds spent waiting on internal rate limiter
+	TotalRetryDelay     atomic.Int64 // Nanoseconds spent sleeping for 429 Retry-After
+	StartTime           time.Time
+
+	// Error counts by HTTP status code
+	errorCounts   map[int]*atomic.Int64
+	errorCountsMu sync.Mutex
+}
+
+// NewPerformanceMetrics creates an initialized PerformanceMetrics instance.
+func NewPerformanceMetrics() *PerformanceMetrics {
+	return &PerformanceMetrics{
+		StartTime:   time.Now(),
+		errorCounts: make(map[int]*atomic.Int64),
+	}
+}
+
+// RecordError safely increments the counter for a given HTTP status code.
+func (m *PerformanceMetrics) RecordError(statusCode int) {
+	m.errorCountsMu.Lock()
+	counter, ok := m.errorCounts[statusCode]
+	if !ok {
+		counter = &atomic.Int64{}
+		m.errorCounts[statusCode] = counter
+	}
+	m.errorCountsMu.Unlock()
+	counter.Add(1)
+}
+
+// LogSummary outputs the aggregated performance metrics via tflog.
+func (m *PerformanceMetrics) LogSummary(ctx context.Context) {
+	elapsed := time.Since(m.StartTime)
+	rateLimitDelayMs := m.TotalRateLimitDelay.Load() / int64(time.Millisecond)
+	retryDelayMs := m.TotalRetryDelay.Load() / int64(time.Millisecond)
+
+	fields := map[string]any{
+		"total_requests":           m.TotalRequests.Load(),
+		"successful_requests":      m.SuccessfulRequests.Load(),
+		"failed_requests":          m.FailedRequests.Load(),
+		"rate_limit_429_hits":      m.RateLimitHits.Load(),
+		"rate_limit_retry_success": m.RateLimitRetryOK.Load(),
+		"rate_limit_retry_fail":    m.RateLimitRetryFail.Load(),
+		"rate_limiter_delay_ms":    rateLimitDelayMs,
+		"retry_after_delay_ms":     retryDelayMs,
+		"elapsed_seconds":          elapsed.Seconds(),
+	}
+
+	// Append error breakdown
+	m.errorCountsMu.Lock()
+	for code, counter := range m.errorCounts {
+		fields[fmt.Sprintf("http_%d_count", code)] = counter.Load()
+	}
+	m.errorCountsMu.Unlock()
+
+	tflog.Info(ctx, "spa-terraform-provider: === PERFORMANCE METRICS SUMMARY ===", fields)
+}
+
+// LogPeriodicSummary logs a summary every summaryInterval requests.
+const metricsSummaryInterval = 10
+
+func (m *PerformanceMetrics) LogPeriodicSummary(ctx context.Context) {
+	total := m.TotalRequests.Load()
+	if total > 0 && total%metricsSummaryInterval == 0 {
+		m.LogSummary(ctx)
+	}
+}
 
 // SPAClient defines the interface for SPA API operations
 type SPAClient interface {
@@ -47,7 +125,7 @@ type SPAClient interface {
 	GetAccessPoliciesDetailed(ctx context.Context, offset, limit int, name, orderBy string, detailed bool) (*AccessPoliciesResponse, error)
 
 	// Security Group management methods
-	GetSecurityGroups(ctx context.Context, offset, limit int, name string) (*SecurityGroupsResponse, error)
+	GetSecurityGroups(ctx context.Context, offset, limit int) (*SecurityGroupsResponse, error)
 	GetSecurityGroup(ctx context.Context, id string) (*SecurityGroup, error)
 	CreateSecurityGroup(ctx context.Context, sg *SecurityGroup) (*SecurityGroup, error)
 	UpdateSecurityGroup(ctx context.Context, id string, sg *SecurityGroup) error
@@ -86,6 +164,13 @@ type SPAClient interface {
 	CreateTerminateUserAccess(ctx context.Context, user *TerminateUserAccess) (*TerminateUserAccess, error)
 	UpdateTerminateUserAccess(ctx context.Context, id string, user *TerminateUserAccess) error
 	DeleteTerminateUserAccess(ctx context.Context, id string) error
+
+	// Session Policy management methods
+	GetSessionPolicies(ctx context.Context, offset, limit int, name, orderBy string) (*SessionPoliciesResponse, error)
+	GetSessionPolicy(ctx context.Context, id string) (*SessionPolicy, error)
+	CreateSessionPolicy(ctx context.Context, policy *SessionPolicy) (*SessionPolicy, error)
+	UpdateSessionPolicy(ctx context.Context, id string, policy *SessionPolicy) error
+	DeleteSessionPolicy(ctx context.Context, id string) error
 }
 
 type TokenProvider interface {
@@ -95,29 +180,40 @@ type TokenProvider interface {
 
 // APIClient is a client for the SPA API
 type APIClient struct {
-	BaseURL            string
-	CustomerID         string
-	AuthToken          string
-	HTTPClient         *http.Client
-	Limiter            *rate.Limiter // Rate limiter for API requests
-	tokenProvider      TokenProvider // Token provider for getting auth tokens
-	FetchDetailsOnList bool          // When true, detailed listing methods will fetch individual item details
+	BaseURL                  string
+	CustomerID               string
+	AuthToken                string
+	HTTPClient               *http.Client
+	Limiter                  *rate.Limiter // Rate limiter for API requests
+	tokenProvider            TokenProvider // Token provider for getting auth tokens
+	FetchDetailsOnList       bool          // When true, detailed listing methods will fetch individual item details
+	SuppressASBNotifications bool          // When true, suppress ASB notifications on API requests
+	UserAgent                string        // Custom User-Agent header for API requests
+	Metrics                  *PerformanceMetrics
 }
 
 // Ensure APIClient implements SPAClient
 var _ SPAClient = (*APIClient)(nil)
 
-func NewAPIClient(baseURL, customerID, authToken string, limiter *rate.Limiter, fetchDetailsOnList bool, tp TokenProvider) *APIClient {
+func NewAPIClient(baseURL, customerID, authToken string, limiter *rate.Limiter, fetchDetailsOnList bool, suppressASBNotifications bool, tp TokenProvider, userAgent string) *APIClient {
 	p := &APIClient{
 		BaseURL:    strings.TrimSuffix(baseURL, "/"), // Ensure no trailing slash
 		CustomerID: customerID,
 		AuthToken:  authToken,
 		HTTPClient: &http.Client{
 			Timeout: 90 * time.Second,
+			// Disable automatic redirect following so that 307 regional redirects
+			// are intercepted in makeRequest and surfaced as actionable errors.
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
-		Limiter:            limiter,
-		FetchDetailsOnList: fetchDetailsOnList, // Set the flag for detailed listing
-		tokenProvider:      tp,                 // Set the token provider for dynamic token management
+		Limiter:                  limiter,
+		FetchDetailsOnList:       fetchDetailsOnList,       // Set the flag for detailed listing
+		SuppressASBNotifications: suppressASBNotifications, // Set the flag for suppressing ASB notifications
+		tokenProvider:            tp,                       // Set the token provider for dynamic token management
+		UserAgent:                userAgent,
+		Metrics:                  NewPerformanceMetrics(),
 	}
 
 	if p.tokenProvider == nil {
@@ -130,11 +226,26 @@ func (c *APIClient) GetToken(ctx context.Context) (string, error) {
 	return c.AuthToken, nil
 }
 
+// redirectErrorResponse models the structured JSON body returned by the API
+// when a 307 Temporary Redirect is issued during data regionalization.
+type redirectErrorResponse struct {
+	Type       string `json:"type"`
+	Detail     string `json:"detail"`
+	Parameters []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	} `json:"parameters"`
+}
+
 // makeRequest performs an HTTP request with proper headers and error handling
 func (c *APIClient) makeRequest(ctx context.Context, method, path string, body any) (*http.Response, error) {
+	requestStart := time.Now()
+	c.Metrics.TotalRequests.Add(1)
+
 	// Get valid token before making the request
 	token, err := c.tokenProvider.GetToken(ctx)
 	if err != nil {
+		c.Metrics.FailedRequests.Add(1)
 		return nil, fmt.Errorf("failed to get auth token: %w", err)
 	}
 
@@ -143,6 +254,7 @@ func (c *APIClient) makeRequest(ctx context.Context, method, path string, body a
 	if body != nil {
 		bodyBytes, err := json.Marshal(body)
 		if err != nil {
+			c.Metrics.FailedRequests.Add(1)
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
 		reqBody = bytes.NewBuffer(bodyBytes)
@@ -152,6 +264,7 @@ func (c *APIClient) makeRequest(ctx context.Context, method, path string, body a
 	fullURL := fmt.Sprintf("%s%s", c.BaseURL, path)
 	req, err := http.NewRequestWithContext(ctx, method, fullURL, reqBody)
 	if err != nil {
+		c.Metrics.FailedRequests.Add(1)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -163,6 +276,14 @@ func (c *APIClient) makeRequest(ctx context.Context, method, path string, body a
 		"Authorization":          fmt.Sprintf("CWSAuth bearer=%s", token),
 		"Cache-Control":          "no-cache, no-store",
 		"X-Content-Type-Options": "nosniff",
+	}
+
+	if c.UserAgent != "" {
+		headers["User-Agent"] = c.UserAgent
+	}
+
+	if c.SuppressASBNotifications {
+		headers["X-Send-ASB-Notification"] = "false"
 	}
 
 	for key, value := range headers {
@@ -182,18 +303,225 @@ func (c *APIClient) makeRequest(ctx context.Context, method, path string, body a
 		// "headers":        req.Header,
 	})
 
-	// Rate limit the request if a limiter is configured
-	if c.Limiter != nil {
-		if err := c.Limiter.Wait(ctx); err != nil {
-			return nil, fmt.Errorf("rate limit exceeded (transaction ID: %s): %w", transactionID, err)
+	const maxRetries = 3
+	var rateLimitHitsThisRequest int64
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Rate limit every attempt (initial + retries) to avoid bursts
+		if c.Limiter != nil {
+			waitStart := time.Now()
+			if err := c.Limiter.Wait(ctx); err != nil {
+				c.Metrics.FailedRequests.Add(1)
+				return nil, fmt.Errorf("rate limit exceeded (transaction ID: %s): %w", transactionID, err)
+			}
+			waited := time.Since(waitStart)
+			if waited > time.Millisecond {
+				c.Metrics.TotalRateLimitDelay.Add(int64(waited))
+				tflog.Debug(ctx, "spa-terraform-provider: Request delayed due to rate limiting", map[string]any{
+					"delay_ms":       waited.Milliseconds(),
+					"method":         method,
+					"url":            fullURL,
+					"transaction_id": transactionID,
+				})
+			}
+		}
+
+		// Rebuild request body for retries since it's consumed after each attempt
+		if attempt > 0 && body != nil {
+			req.Body = io.NopCloser(bytes.NewBufferString(bodyContent))
+		}
+
+		resp, err := c.HTTPClient.Do(req)
+		if err != nil {
+			c.Metrics.FailedRequests.Add(1)
+			return nil, fmt.Errorf("failed to make request (transaction ID: %s): %w", transactionID, err)
+		}
+
+		// Detect regional redirect (307 Temporary Redirect) and surface an actionable error.
+		// The API returns this when the configured base_url does not match the customer's data region.
+		if resp.StatusCode == http.StatusTemporaryRedirect {
+			redirectBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+
+			location := resp.Header.Get("Location")
+
+			var redirectErr redirectErrorResponse
+			_ = json.Unmarshal(redirectBody, &redirectErr)
+
+			customerDataRegion := ""
+			currentAPIMRegion := ""
+			for _, p := range redirectErr.Parameters {
+				switch p.Name {
+				case "customerDataRegion":
+					customerDataRegion = p.Value
+				case "currentAPIMRegion":
+					currentAPIMRegion = p.Value
+				}
+			}
+
+			detail := redirectErr.Detail
+			if detail == "" {
+				detail = "Regional customer must use their designated regional endpoint"
+			}
+
+			// Derive the correct base_url by swapping only the host of the configured
+			// BaseURL with the host from the Location header. Scheme and path are always
+			// taken from the trusted BaseURL, so empty-scheme or scheme-relative Location
+			// values are never an issue. The API only redirects to known regional
+			// *.cloud.com hosts; anything else is rejected to prevent a compromised
+			// upstream from misleading the operator into a malicious URL.
+			correctBaseURL := c.BaseURL
+			if location != "" {
+				if loc, parseErr := url.Parse(location); parseErr == nil && loc.Host != "" {
+					if !strings.HasSuffix(loc.Host, ".cloud.com") {
+						tflog.Warn(ctx, "spa-terraform-provider: 307 Location header points to an untrusted host, ignoring derived base_url", map[string]any{
+							"location":       location,
+							"transaction_id": transactionID,
+						})
+					} else if current, parseErr := url.Parse(c.BaseURL); parseErr == nil {
+						current.Host = loc.Host
+						correctBaseURL = current.String()
+					}
+				}
+			}
+
+			tflog.Error(ctx, "spa-terraform-provider: Regional redirect detected — update base_url in provider configuration", map[string]any{
+				"current_base_url":     c.BaseURL,
+				"correct_base_url":     correctBaseURL,
+				"customer_data_region": customerDataRegion,
+				"current_apim_region":  currentAPIMRegion,
+				"location":             location,
+				"transaction_id":       transactionID,
+			})
+
+			regionInfo := ""
+			if customerDataRegion != "" && currentAPIMRegion != "" {
+				regionInfo = fmt.Sprintf(" Your account data is in region %q but you are connecting via the %q region endpoint.", customerDataRegion, currentAPIMRegion)
+			} else if customerDataRegion != "" {
+				regionInfo = fmt.Sprintf(" Your account data is in region %q.", customerDataRegion)
+			}
+
+			return nil, fmt.Errorf(
+				"API endpoint has moved (307 Temporary Redirect).%s\n"+
+					"Update your provider configuration:\n"+
+					"  Current base_url: %s\n"+
+					"  Correct base_url: %s\n"+
+					"Detail: %s (transaction ID: %s)",
+				regionInfo,
+				c.BaseURL,
+				correctBaseURL,
+				detail,
+				transactionID,
+			)
+		}
+
+		if resp.StatusCode != http.StatusTooManyRequests {
+			// Track success/failure based on status code
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				c.Metrics.SuccessfulRequests.Add(1)
+				if rateLimitHitsThisRequest > 0 {
+					c.Metrics.RateLimitRetryOK.Add(1)
+				}
+			} else {
+				c.Metrics.FailedRequests.Add(1)
+				c.Metrics.RecordError(resp.StatusCode)
+			}
+			// Log per-request timing at Debug level to avoid noise during normal runs
+			tflog.Debug(ctx, "spa-terraform-provider: request completed", map[string]any{
+				"method":              method,
+				"url":                 fullURL,
+				"status":              resp.StatusCode,
+				"duration_ms":         time.Since(requestStart).Milliseconds(),
+				"rate_limit_429_hits": rateLimitHitsThisRequest,
+				"transaction_id":      transactionID,
+			})
+			c.Metrics.LogPeriodicSummary(ctx)
+			return resp, nil
+		}
+
+		// Handle 429 Too Many Requests - drain and close the body so the transport can reuse the connection.
+		rateLimitHitsThisRequest++
+		c.Metrics.RateLimitHits.Add(1)
+		if resp.Body != nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}
+
+		if attempt == maxRetries {
+			c.Metrics.FailedRequests.Add(1)
+			c.Metrics.RateLimitRetryFail.Add(1)
+			c.Metrics.RecordError(http.StatusTooManyRequests)
+			return nil, fmt.Errorf("API rate limit exceeded after %d retries (transaction ID: %s)", maxRetries, transactionID)
+		}
+
+		// Parse Retry-After header.
+		retryAfter := resp.Header.Get("Retry-After")
+		const maxRetryWait = 30 * time.Second
+		waitDuration := maxRetryWait // Default wait if header is missing
+
+		if retryAfter != "" {
+			if seconds, err := strconv.Atoi(retryAfter); err == nil {
+				waitDuration = time.Duration(seconds) * time.Second
+			} else if retryTime, err := http.ParseTime(retryAfter); err == nil {
+				waitDuration = time.Until(retryTime)
+				if waitDuration < 0 {
+					waitDuration = 0
+				}
+			} else {
+				tflog.Warn(ctx, "spa-terraform-provider: Received unparseable Retry-After header, using default retry delay", map[string]any{
+					"retry_after":    retryAfter,
+					"default_wait":   waitDuration.Seconds(),
+					"attempt":        attempt + 1,
+					"max_retries":    maxRetries,
+					"method":         method,
+					"url":            fullURL,
+					"transaction_id": transactionID,
+				})
+			}
+		}
+
+		// Cap wait duration to avoid excessively long sleeps
+		if waitDuration > maxRetryWait {
+			tflog.Warn(ctx, "spa-terraform-provider: Retry-After exceeds maximum wait, capping to maxRetryWait", map[string]any{
+				"retry_after_requested": waitDuration.Seconds(),
+				"max_retry_wait":        maxRetryWait.Seconds(),
+				"attempt":               attempt + 1,
+				"max_retries":           maxRetries,
+				"method":                method,
+				"url":                   fullURL,
+				"transaction_id":        transactionID,
+			})
+			waitDuration = maxRetryWait
+		}
+
+		tflog.Debug(ctx, "spa-terraform-provider: Received 429 Too Many Requests, retrying after delay", map[string]any{
+			"retry_after_seconds": waitDuration.Seconds(),
+			"attempt":             attempt + 1,
+			"max_retries":         maxRetries,
+			"method":              method,
+			"url":                 fullURL,
+			"transaction_id":      transactionID,
+		})
+
+		retryWaitStart := time.Now()
+		timer := time.NewTimer(waitDuration)
+		select {
+		case <-timer.C:
+			c.Metrics.TotalRetryDelay.Add(int64(time.Since(retryWaitStart)))
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			c.Metrics.FailedRequests.Add(1)
+			return nil, fmt.Errorf("context cancelled while waiting for rate limit retry (transaction ID: %s): %w", transactionID, ctx.Err())
 		}
 	}
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request (transaction ID: %s): %w", transactionID, err)
-	}
 
-	return resp, nil
+	// This should not be reached, but just in case
+	c.Metrics.FailedRequests.Add(1)
+	return nil, fmt.Errorf("unexpected state in rate limit retry loop (transaction ID: %s)", transactionID)
 }
 
 // handleResponse processes API response and handles common error cases
@@ -304,9 +632,9 @@ type Application struct {
 	CustomProperties     map[string]any `json:"customProperties,omitempty"`
 	CustomerDomainFields map[string]any `json:"customerDomainFields"`
 	SSO                  map[string]any `json:"sso,omitempty"`
-	// CreatedTime          string         `json:"createdTime,omitempty"`
-	State       string `json:"state,omitempty"`
-	PolicyCount string `json:"policyCount,omitempty"`
+	CreatedTime          string         `json:"createdTime,omitempty"`
+	State                string         `json:"state,omitempty"`
+	PolicyCount          string         `json:"policyCount,omitempty"`
 }
 
 // ApplicationListItem represents an application in the applications listing response (where SSO is a string)
@@ -333,9 +661,9 @@ type ApplicationListItem struct {
 	CustomProperties     map[string]any `json:"customProperties,omitempty"`
 	CustomerDomainFields map[string]any `json:"customerDomainFields,omitempty"`
 	SSO                  string         `json:"sso,omitempty"`
-	// CreatedTime          string         `json:"createdTime,omitempty"`
-	State       string `json:"state,omitempty"`
-	PolicyCount string `json:"policyCount,omitempty"`
+	CreatedTime          string         `json:"createdTime,omitempty"`
+	State                string         `json:"state,omitempty"`
+	PolicyCount          string         `json:"policyCount,omitempty"`
 }
 
 // Location represents a location object with name and uuid
@@ -486,6 +814,14 @@ func (c *APIClient) GetApplicationsDetailed(ctx context.Context, offset, limit i
 				CustomerDomainFields: fullApp.CustomerDomainFields,
 				State:                fullApp.State,
 				PolicyCount:          fullApp.PolicyCount,
+				// Prefer value from individual GET; fall back to list value (e.g. ztna apps
+				// return createdTime in list responses but not in individual GET responses).
+				CreatedTime: func() string {
+					if fullApp.CreatedTime != "" {
+						return fullApp.CreatedTime
+					}
+					return appItem.CreatedTime
+				}(),
 			}
 
 			// Convert SSO from map to string for ApplicationListItem
@@ -613,6 +949,16 @@ func (c *APIClient) DeleteApplication(ctx context.Context, id string) error {
 		return err
 	}
 
+	// Treat 404 as success — the resource is already gone (desired state)
+	if resp.StatusCode == 404 {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		tflog.Info(ctx, "spa-terraform-provider: Application already deleted (404), treating as success", map[string]any{
+			"app_id": id,
+		})
+		return nil
+	}
+
 	return c.handleResponse(ctx, resp, nil)
 }
 
@@ -624,7 +970,8 @@ type AccessPolicy struct {
 	Name        string       `json:"name"`
 	Description string       `json:"description,omitempty"`
 	Active      bool         `json:"active"` // Required field for create/update
-	Priority    int          `json:"priority,omitempty"`
+	Priority    int          `json:"priority"`
+	Modified    string       `json:"modified,omitempty"`
 	Apps        []string     `json:"apps,omitempty"`
 	AccessRules []AccessRule `json:"accessRules,omitempty"`
 }
@@ -634,7 +981,7 @@ type AccessRule struct {
 	ID               string            `json:"id,omitempty"`
 	Name             string            `json:"name,omitempty"`
 	Description      string            `json:"description,omitempty"`
-	Priority         int               `json:"priority,omitempty"`
+	Priority         int               `json:"priority"`
 	Active           bool              `json:"active"`                 // Required field - no omitempty
 	Access           string            `json:"access,omitempty"`       // ACCESS_DENY, ACCESS_ALLOW
 	AccessNative     string            `json:"accessNative,omitempty"` // ACCESS_DENY, ACCESS_ALLOW
@@ -928,6 +1275,16 @@ func (c *APIClient) DeleteAccessPolicy(ctx context.Context, id string) error {
 		return err
 	}
 
+	// Treat 404 as success — the resource is already gone (desired state)
+	if resp.StatusCode == 404 {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		tflog.Info(ctx, "spa-terraform-provider: Access policy already deleted (404), treating as success", map[string]any{
+			"policy_id": id,
+		})
+		return nil
+	}
+
 	return c.handleResponse(ctx, resp, nil)
 }
 
@@ -958,15 +1315,12 @@ type SecurityGroupsResponse struct {
 }
 
 // GetSecurityGroups retrieves a list of security groups
-func (c *APIClient) GetSecurityGroups(ctx context.Context, offset, limit int, name string) (*SecurityGroupsResponse, error) {
+func (c *APIClient) GetSecurityGroups(ctx context.Context, offset, limit int) (*SecurityGroupsResponse, error) {
 	params := url.Values{}
 	params.Add("offset", fmt.Sprintf("%d", offset))
 	// Only add limit parameter if it's not negative (negative means no limit)
 	if limit >= 0 {
 		params.Add("limit", fmt.Sprintf("%d", limit))
-	}
-	if name != "" {
-		params.Add("name", name)
 	}
 
 	path := "/securityGroup"
@@ -1063,6 +1417,16 @@ func (c *APIClient) DeleteSecurityGroup(ctx context.Context, id string) error {
 		return err
 	}
 
+	// Treat 404 as success — the resource is already gone (desired state)
+	if resp.StatusCode == 404 {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		tflog.Info(ctx, "spa-terraform-provider: Security group already deleted (404), treating as success", map[string]any{
+			"sg_id": id,
+		})
+		return nil
+	}
+
 	return c.handleResponse(ctx, resp, nil)
 }
 
@@ -1076,8 +1440,8 @@ type RoutingDomain struct {
 	Comment     string   `json:"comment"` // Remove omitempty since API requires it
 	Flag        string   `json:"flag,omitempty"`
 	Error       string   `json:"error,omitempty"` // Keep omitempty for computed field
-	IP          bool     `json:"ip,omitempty"`
-	LocationIds []string `json:"locationIds"` // Remove omitempty since API requires array
+	IP          bool     `json:"ip"`              // Remove omitempty since false (zero value) must be sent explicitly
+	LocationIds []string `json:"locationIds"`     // Remove omitempty since API requires array
 }
 
 // RoutingDomainsResponse represents the response from listing routing domains
@@ -1212,6 +1576,16 @@ func (c *APIClient) DeleteRoutingDomain(ctx context.Context, fqdn string) error 
 		return err
 	}
 
+	// Treat 404 as success — the resource is already gone (desired state)
+	if resp.StatusCode == 404 {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		tflog.Info(ctx, "spa-terraform-provider: Routing domain already deleted (404), treating as success", map[string]any{
+			"fqdn": fqdn,
+		})
+		return nil
+	}
+
 	return c.handleResponse(ctx, resp, nil)
 }
 
@@ -1299,6 +1673,16 @@ func (c *APIClient) DeleteCertificate(ctx context.Context, id string) error {
 	resp, err := c.makeRequest(ctx, "DELETE", path, nil)
 	if err != nil {
 		return err
+	}
+
+	// Treat 404 as success — the resource is already gone (desired state)
+	if resp.StatusCode == 404 {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		tflog.Info(ctx, "spa-terraform-provider: Certificate already deleted (404), treating as success", map[string]any{
+			"cert_id": id,
+		})
+		return nil
 	}
 
 	return c.handleResponse(ctx, resp, nil)
@@ -1528,6 +1912,16 @@ func (c *APIClient) DeleteTerminateMachineAccess(ctx context.Context, id string)
 		return err
 	}
 
+	// Treat 404 as success — the resource is already gone (desired state)
+	if resp.StatusCode == 404 {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		tflog.Info(ctx, "spa-terraform-provider: Terminate machine access already deleted (404), treating as success", map[string]any{
+			"machine_id": id,
+		})
+		return nil
+	}
+
 	return c.handleResponse(ctx, resp, nil)
 }
 
@@ -1601,6 +1995,215 @@ func (c *APIClient) DeleteTerminateUserAccess(ctx context.Context, id string) er
 	resp, err := c.makeRequest(ctx, "DELETE", path, nil)
 	if err != nil {
 		return err
+	}
+
+	// Treat 404 as success — the resource is already gone (desired state)
+	if resp.StatusCode == 404 {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		tflog.Info(ctx, "spa-terraform-provider: Terminate user access already deleted (404), treating as success", map[string]any{
+			"user_id": id,
+		})
+		return nil
+	}
+
+	return c.handleResponse(ctx, resp, nil)
+}
+
+// Session Policy API methods
+
+// SessionPolicyCondition represents a condition within a session policy rule (spec §4.1)
+type SessionPolicyCondition struct {
+	Type      string                 `json:"type"`
+	Operator  string                 `json:"operator"`
+	TagSource string                 `json:"tagSource"`
+	TagKey    string                 `json:"tagKey"`
+	Values    []string               `json:"values"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// SessionPolicyAction represents the actions block of a session policy rule (spec §4.2)
+type SessionPolicyAction struct {
+	Routing               string `json:"routing,omitempty"`
+	DisableSecurityGroups string `json:"disableSecurityGroups,omitempty"`
+	LocalLanAccess        string `json:"localLanAccess,omitempty"`
+}
+
+// SessionPolicyRule represents one rule within a session policy (spec §4.3)
+type SessionPolicyRule struct {
+	ID          string                   `json:"id,omitempty"`
+	Name        string                   `json:"name,omitempty"`
+	Description string                   `json:"description,omitempty"`
+	Priority    int                      `json:"priority"`
+	Active      bool                     `json:"active"`
+	Actions     SessionPolicyAction      `json:"actions"`
+	Conditions  []SessionPolicyCondition `json:"conditions"`
+}
+
+// SessionPolicy represents a session policy for create/update/read (spec §4.4–4.6)
+type SessionPolicy struct {
+	ID           string              `json:"id,omitempty"`
+	Name         string              `json:"name"`
+	Description  string              `json:"description,omitempty"`
+	Active       bool                `json:"active"`
+	Priority     *int                `json:"priority,omitempty"`
+	GenericRules []SessionPolicyRule `json:"genericRules"`
+}
+
+// SessionPoliciesResponse is the paginated list response (spec §4.7)
+type SessionPoliciesResponse struct {
+	Items    []SessionPolicy `json:"items"`
+	TotalNum int             `json:"totalNum"`
+}
+
+// GetSessionPolicies retrieves a list of session policies
+func (c *APIClient) GetSessionPolicies(ctx context.Context, offset, limit int, name, orderBy string) (*SessionPoliciesResponse, error) {
+	params := url.Values{}
+	params.Add("offset", fmt.Sprintf("%d", offset))
+	if limit >= 0 {
+		params.Add("limit", fmt.Sprintf("%d", limit))
+	}
+	if orderBy != "" {
+		params.Add("orderby", orderBy)
+	} else {
+		params.Add("orderby", "name")
+	}
+	if name != "" {
+		params.Add("name", name)
+	}
+
+	path := "/sessionPolicy"
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+
+	tflog.Debug(ctx, "spa-terraform-provider: APIClient.GetSessionPolicies calling API", map[string]any{
+		"method": "GET",
+		"path":   path,
+	})
+	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result SessionPoliciesResponse
+	if err := c.handleResponse(ctx, resp, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+// GetSessionPolicy retrieves a specific session policy by ID
+func (c *APIClient) GetSessionPolicy(ctx context.Context, id string) (*SessionPolicy, error) {
+	path := fmt.Sprintf("/sessionPolicy/%s", id)
+
+	tflog.Debug(ctx, "spa-terraform-provider: APIClient.GetSessionPolicy calling API", map[string]any{
+		"method":    "GET",
+		"path":      path,
+		"policy_id": id,
+	})
+	resp, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result SessionPolicy
+	if err := c.handleResponse(ctx, resp, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+// CreateSessionPolicy creates a new session policy
+func (c *APIClient) CreateSessionPolicy(ctx context.Context, policy *SessionPolicy) (*SessionPolicy, error) {
+	tflog.Debug(ctx, "spa-terraform-provider: APIClient.CreateSessionPolicy calling API", map[string]any{
+		"method": "POST",
+		"path":   "/sessionPolicy",
+		"policy": policy.Name,
+	})
+
+	policyJSON, _ := json.MarshalIndent(policy, "", "  ")
+	tflog.Debug(ctx, "spa-terraform-provider: APIClient.CreateSessionPolicy payload", map[string]any{
+		"json": string(policyJSON),
+	})
+
+	resp, err := c.makeRequest(ctx, "POST", "/sessionPolicy", policy)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract policy ID from Location header (POST returns 201 with no body)
+	// Format: /accessSecurity/sessionPolicy/<uuid>
+	if resp.StatusCode == http.StatusCreated {
+		location := resp.Header.Get("Location")
+		if location == "" {
+			return nil, fmt.Errorf("session policy created but Location header was missing or empty")
+		}
+		parts := strings.Split(location, "/")
+		id := parts[len(parts)-1]
+		if id == "" {
+			return nil, fmt.Errorf("session policy created but could not extract ID from Location header: %s", location)
+		}
+		policy.ID = id
+		tflog.Debug(ctx, "spa-terraform-provider: APIClient.CreateSessionPolicy extracted ID from Location header", map[string]any{
+			"location": location,
+			"id":       policy.ID,
+		})
+	}
+
+	var result SessionPolicy
+	if err := c.handleResponse(ctx, resp, &result); err != nil {
+		return nil, err
+	}
+
+	if policy.ID != "" {
+		result.ID = policy.ID
+	}
+
+	return &result, nil
+}
+
+// UpdateSessionPolicy updates an existing session policy (full replacement)
+func (c *APIClient) UpdateSessionPolicy(ctx context.Context, id string, policy *SessionPolicy) error {
+	path := fmt.Sprintf("/sessionPolicy/%s", id)
+
+	tflog.Debug(ctx, "spa-terraform-provider: APIClient.UpdateSessionPolicy calling API", map[string]any{
+		"method":    "PUT",
+		"path":      path,
+		"policy_id": id,
+	})
+	resp, err := c.makeRequest(ctx, "PUT", path, policy)
+	if err != nil {
+		return err
+	}
+
+	return c.handleResponse(ctx, resp, nil)
+}
+
+// DeleteSessionPolicy deletes a session policy
+func (c *APIClient) DeleteSessionPolicy(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/sessionPolicy/%s", id)
+
+	tflog.Debug(ctx, "spa-terraform-provider: APIClient.DeleteSessionPolicy calling API", map[string]any{
+		"method":    "DELETE",
+		"path":      path,
+		"policy_id": id,
+	})
+	resp, err := c.makeRequest(ctx, "DELETE", path, nil)
+	if err != nil {
+		return err
+	}
+
+	// Treat 404 as success — the resource is already gone (desired state)
+	if resp.StatusCode == 404 {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		tflog.Info(ctx, "spa-terraform-provider: Session policy already deleted (404), treating as success", map[string]any{
+			"policy_id": id,
+		})
+		return nil
 	}
 
 	return c.handleResponse(ctx, resp, nil)

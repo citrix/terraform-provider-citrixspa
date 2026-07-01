@@ -11,15 +11,14 @@ This tool discovers resources from the SPA service provider and generates Terraf
 - **Import Blocks**: Generates modern Terraform import blocks for configuration-driven imports
 - **Configuration Management**: Provides a foundation for managing SPA resources with Terraform
 - **Built-in Validation**: Integrated validation and testing capabilities
-- **Cross-Platform**: Pure Python implementation works on Windows, macOS, and Linux
-- **High Performance**: 3-4x faster than previous shell-based implementation
-- **Zero External Dependencies**: No external tools required (except Terraform)
+- **Cross-Platform**: PowerShell 7+ implementation works on Windows, macOS, and Linux
+- **Zero External Dependencies**: No external tools required (except Terraform and PowerShell 7+)
 
 ## Quick Start
 
 ### Prerequisites
 
-- **Python 3.6+**: Required for the spa_manager.py script
+- **PowerShell 7+**: Required for the spa_manager.ps1 script
 
 - **Terraform**: Required for resource management
 
@@ -33,9 +32,9 @@ This tool discovers resources from the SPA service provider and generates Terraf
 
 1. **Initial Setup**
 
-   ```bash
+   ```powershell
    cd resource-listing-tool
-   python3 spa_manager.py --setup
+   ./spa_manager.ps1 -Setup
    ```
 
 2. **Configure Credentials**
@@ -64,14 +63,14 @@ This tool discovers resources from the SPA service provider and generates Terraf
 
 3. **Run Discovery**
 
-   ```bash
-   python3 spa_manager.py
+   ```powershell
+   ./spa_manager.ps1 -List
    ```
 
 4. **Validate Configuration**
 
-   ```bash
-   python3 spa_manager.py --validate
+   ```powershell
+   ./spa_manager.ps1 -Validate
    ```
 
 5. **Import Existing Resources**
@@ -100,46 +99,46 @@ This tool discovers resources from the SPA service provider and generates Terraf
 
 ### Setup
 
-```bash
-python3 spa_manager.py --setup    # Create credentials file from example
+```powershell
+./spa_manager.ps1 -Setup    # Create credentials file from example
 ```
 
 ### Discover and Generate
 
-```bash
+```powershell
 # Standard discovery with enhanced data collection (queries individual items)
-python3 spa_manager.py -L         # Discover resources and generate Terraform files
+./spa_manager.ps1 -List            # Discover resources and generate Terraform files
 
 # Quick discovery using list data only (faster but potentially incomplete field data)
-python3 spa_manager.py -L -q      # Use -q flag to disable individual item queries
+./spa_manager.ps1 -List -Quick     # Use -Quick flag to disable individual item queries
 
-python3 spa_manager.py --debug    # Enable debug logging
-python3 spa_manager.py --verbose  # Enable verbose output
+./spa_manager.ps1 -DebugOutput     # Enable debug logging
+./spa_manager.ps1 -VerboseOutput   # Enable verbose output
 ```
 
 #### Enhanced vs Quick Mode
 
 - **Enhanced Mode (default)**: After getting the list of resources, the tool queries each individual item to get complete field data. This ensures all available fields are included in the generated Terraform configuration but takes longer.
 
-- **Quick Mode (`-q` flag)**: Uses only the data from list queries, which is faster but may result in missing fields if the list API returns fewer fields than individual item queries.
+- **Quick Mode (`-Quick` flag)**: Uses only the data from list queries, which is faster but may result in missing fields if the list API returns fewer fields than individual item queries.
 
 ### Testing and Validation
 
-```bash
-python3 spa_manager.py --test     # Run basic functionality tests
-python3 spa_manager.py --validate # Validate generated Terraform configuration
+```powershell
+./spa_manager.ps1 -Test       # Run basic functionality tests
+./spa_manager.ps1 -Validate   # Validate generated Terraform configuration
 ```
 
 ### Cleanup
 
-```bash
-python3 spa_manager.py --clean    # Remove temporary files and generated configurations
+```powershell
+./spa_manager.ps1 -Clean    # Remove temporary files and generated configurations
 ```
 
 ### Help
 
-```bash
-python3 spa_manager.py --help     # Show usage information
+```powershell
+Get-Help ./spa_manager.ps1    # Show usage information
 ```
 
 ## Generated Files
@@ -195,14 +194,14 @@ Edit `terraform.tfvars` to configure your preferred authentication method.
 
 ### Missing Dependencies
 
-- Install Python 3.6+: Follow your platform's Python installation guide
+- Install PowerShell 7+: Follow your platform's PowerShell installation guide
 - Re-run the discovery script
 
 ### No Resources Found
 
 - Verify you have resources in your SPA environment
 - Check API permissions for your credentials
-- Use `--debug` flag for detailed logging
+- Use `-DebugOutput` flag for detailed logging
 
 ### Import Failures
 
@@ -214,8 +213,8 @@ Edit `terraform.tfvars` to configure your preferred authentication method.
 
 If individual item queries are failing:
 
-- Use the `-q` flag to disable enhanced queries and fall back to list data only
-- Check debug logs with `--debug` to see which individual queries are failing
+- Use the `-Quick` flag to disable enhanced queries and fall back to list data only
+- Check debug logs with `-DebugOutput` to see which individual queries are failing
 - Verify API permissions allow querying individual items, not just lists
 - Some resources may not support individual queries - the tool will fall back to list data automatically
 - **Note**: Routing domains use FQDN for lookup (not ID/name like other resources)
@@ -223,10 +222,10 @@ If individual item queries are failing:
 ### General Issues
 
 1. **Check Credentials**: Ensure your `terraform.tfvars` has correct credentials
-2. **Enable Debug**: Use `--debug` flag to see detailed logging
-3. **Clean State**: Use `--clean` to remove temporary files and start fresh
+2. **Enable Debug**: Use `-DebugOutput` flag to see detailed logging
+3. **Clean State**: Use `-Clean` to remove temporary files and start fresh
 4. **Check Connectivity**: Verify network access to the SPA API endpoints
-5. **Rate Limiting**: If you have many resources, the enhanced mode may hit API rate limits - use `-q` for faster operation
+5. **Rate Limiting**: If you have many resources, the enhanced mode may hit API rate limits - use `-Quick` for faster operation
 
 ## Advanced Usage
 
@@ -287,40 +286,39 @@ The SPA resource listing tool has been enhanced to not only discover resources b
 
 #### Basic Usage
 
-```bash
-python3 spa_manager.py
+```powershell
+./spa_manager.ps1 -List
 ```
 
 #### With Testing and Validation
 
-```bash
-python3 spa_manager.py --test
-python3 spa_manager.py --validate
+```powershell
+./spa_manager.ps1 -Test
+./spa_manager.ps1 -Validate
 terraform apply  # Using the generated import blocks
 terraform plan
 ```
 
 #### With Debug
 
-```bash
-python3 spa_manager.py --debug
+```powershell
+./spa_manager.ps1 -DebugOutput
 ```
 
 ## Files in this Directory
 
-- **`spa_manager.py`**: Main Python script with complete functionality
+- **`spa_manager.ps1`**: Main PowerShell script with complete functionality
 - **`terraform.tfvars.example`**: Template for credentials configuration
 - **`spa_resources.tf`**: Generated Terraform resource configuration (created by script)
 - **`imports.tf`**: Generated Terraform import blocks (created by script)
 - **`spa_resources.tf.example`**: Example of generated Terraform configuration
 - **`README.md`**: This comprehensive documentation file
-- **`README_PYTHON.md`**: Python-specific implementation guide
 
 ## Prerequisites
 
 - Valid SPA/Citrix Cloud credentials
 - Terraform installed
-- Python 3.6+ (built-in on most modern systems)
+- PowerShell 7+
 - Go compiler (for building the provider)
 
 ## What It Does

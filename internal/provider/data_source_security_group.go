@@ -40,12 +40,10 @@ func (d *SecurityGroupDataSource) Schema(ctx context.Context, req datasource.Sch
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "Security group identifier",
-				Optional:            true,
-				Computed:            true,
+				Required:            true,
 			},
 			"name": schema.StringAttribute{
 				MarkdownDescription: "Name of the security group",
-				Optional:            true,
 				Computed:            true,
 			},
 			"app_ids": schema.SetAttribute{
@@ -114,37 +112,9 @@ func (d *SecurityGroupDataSource) Read(ctx context.Context, req datasource.ReadR
 		return
 	}
 
-	var sg *SecurityGroup
-	var err error
-
-	if !data.ID.IsNull() {
-		// Get by ID
-		sg, err = d.client.GetSecurityGroup(ctx, data.ID.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read security group, got error: %s", err))
-			return
-		}
-	} else if !data.Name.IsNull() {
-		// Get by name
-		securityGroups, err := d.client.GetSecurityGroups(ctx, 0, -1, data.Name.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read security groups, got error: %s", err))
-			return
-		}
-
-		if len(securityGroups.SecurityGroups) == 0 {
-			resp.Diagnostics.AddError("Security Group Not Found", fmt.Sprintf("No security group found with name: %s", data.Name.ValueString()))
-			return
-		}
-
-		if len(securityGroups.SecurityGroups) > 1 {
-			resp.Diagnostics.AddError("Multiple Security Groups Found", fmt.Sprintf("Multiple security groups found with name: %s", data.Name.ValueString()))
-			return
-		}
-
-		sg = &securityGroups.SecurityGroups[0]
-	} else {
-		resp.Diagnostics.AddError("Missing Required Field", "Either 'id' or 'name' must be specified")
+	sg, err := d.client.GetSecurityGroup(ctx, data.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read security group, got error: %s", err))
 		return
 	}
 

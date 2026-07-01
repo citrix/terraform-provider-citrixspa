@@ -380,6 +380,7 @@ func TestAccApplicationsDataSource_eachItemHasRequiredFields(t *testing.T) {
 					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.name"),
 					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.type"),
 					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.state"),
+					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.created_time"),
 				),
 			},
 		},

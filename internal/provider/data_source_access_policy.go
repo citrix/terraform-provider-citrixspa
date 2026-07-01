@@ -22,13 +22,14 @@ type AccessPolicyDataSource struct {
 }
 
 type AccessPolicyDataSourceModel struct {
-	ID          types.String                `tfsdk:"id"`
-	Name        types.String                `tfsdk:"name"`
-	Description types.String                `tfsdk:"description"`
-	Active      types.Bool                  `tfsdk:"active"`
-	Priority    types.Int64                 `tfsdk:"priority"`
-	Apps        types.Set                   `tfsdk:"apps"`
-	AccessRules []AccessRuleDataSourceModel `tfsdk:"access_rules"`
+	ID           types.String                `tfsdk:"id"`
+	Name         types.String                `tfsdk:"name"`
+	Description  types.String                `tfsdk:"description"`
+	Active       types.Bool                  `tfsdk:"active"`
+	Priority     types.Int64                 `tfsdk:"priority"`
+	Modified     types.String                `tfsdk:"modified"`
+	Apps         types.Set                   `tfsdk:"apps"`
+	AccessRules  []AccessRuleDataSourceModel `tfsdk:"access_rules"`
 }
 
 type AccessRuleDataSourceModel struct {
@@ -110,6 +111,10 @@ func (d *AccessPolicyDataSource) Schema(ctx context.Context, req datasource.Sche
 				MarkdownDescription: "Set of application IDs associated with the access policy",
 				Computed:            true,
 				ElementType:         types.StringType,
+			},
+			"modified": schema.StringAttribute{
+				MarkdownDescription: "Time the access policy was last modified (ISO 8601, e.g. 2026-05-11T09:49:40Z)",
+				Computed:            true,
 			},
 			"access_rules": schema.ListNestedAttribute{
 				MarkdownDescription: "Access rules for the access policy",
@@ -309,6 +314,11 @@ func (d *AccessPolicyDataSource) Read(ctx context.Context, req datasource.ReadRe
 	data.Active = types.BoolValue(policy.Active)
 	data.Priority = types.Int64Value(int64(policy.Priority))
 	data.Description = types.StringValue(policy.Description)
+	if policy.Modified != "" {
+		data.Modified = types.StringValue(policy.Modified)
+	} else {
+		data.Modified = types.StringNull()
+	}
 
 	// Policy-level conditions and actions don't exist in the API - they are only at the access rule level
 

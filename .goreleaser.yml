@@ -15,7 +15,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - '-s -w'
+      - '-s -w -X main.version={{ .Version }}'
     goos:
       - freebsd
       - windows
@@ -36,6 +36,18 @@ archives:
 checksum:
   name_template: 'terraform-provider-spa_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
+signs:
+  - artifacts: checksum
+    args:
+      # If you want to sign a certain artifact with a specific key
+      # (identified by fingerprint), use --local-user.
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
 release:
   # If you want to manually examine the release before its live, uncomment this line:
   # draft: true

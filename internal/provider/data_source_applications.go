@@ -50,6 +50,7 @@ type ApplicationListDataSourceModel struct {
 	SSO                  types.String `tfsdk:"sso"`
 	State                types.String `tfsdk:"state"`
 	PolicyCount          types.String `tfsdk:"policy_count"`
+	CreatedTime          types.String `tfsdk:"created_time"`
 }
 
 // ApplicationsDataSourceModel describes the data source data model.
@@ -165,6 +166,11 @@ func (d *ApplicationsDataSource) Read(ctx context.Context, req datasource.ReadRe
 		}
 
 		// Handle optional string fields - set to null if empty string from API
+		if app.CreatedTime != "" {
+			appModel.CreatedTime = types.StringValue(app.CreatedTime)
+		} else {
+			appModel.CreatedTime = types.StringNull()
+		}
 		if app.Description != "" {
 			appModel.Description = types.StringValue(app.Description)
 		} else {

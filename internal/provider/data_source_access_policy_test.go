@@ -209,6 +209,8 @@ func TestAccAccessPolicyDataSource_byName(t *testing.T) {
 					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_name", "apps.#"),
 					// access_rules list must be present
 					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_name", "access_rules.#"),
+					// modified must be populated
+					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_name", "modified"),
 					// data source must match the resource
 					resource.TestCheckResourceAttrPair(
 						"data.spa_access_policy.by_name", "id",
@@ -264,6 +266,7 @@ func TestAccAccessPolicyDataSource_byID(t *testing.T) {
 					resource.TestCheckResourceAttr("data.spa_access_policy.by_id", "priority", "989"),
 					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_id", "apps.#"),
 					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_id", "access_rules.#"),
+					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_id", "modified"),
 					resource.TestCheckResourceAttrPair(
 						"data.spa_access_policy.by_id", "id",
 						"spa_access_policy.ds_policy", "id",

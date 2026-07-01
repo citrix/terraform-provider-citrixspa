@@ -514,6 +514,7 @@ func TestAccAccessPoliciesDataSource_eachItemHasRequiredFields(t *testing.T) {
 					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.active"),
 					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.priority"),
 					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.apps.#"),
+					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.modified"),
 				),
 			},
 		},

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -12,7 +12,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -57,7 +62,7 @@ type ApplicationResourceModel struct {
 	Destination          types.List   `tfsdk:"destination"`
 	CustomProperties     types.Map    `tfsdk:"custom_properties"`
 	CustomerDomainFields types.Map    `tfsdk:"customer_domain_fields"`
-	SSO                  SSOValue     `tfsdk:"sso"`
+	SSO                  types.Object `tfsdk:"sso"`
 	State                types.String `tfsdk:"state"`
 	PolicyCount          types.String `tfsdk:"policy_count"`
 }
@@ -123,18 +128,26 @@ func (r *ApplicationResource) Schema(ctx context.Context, req resource.SchemaReq
 			"hidden": schema.BoolAttribute{
 				MarkdownDescription: "Whether to hide the application",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"agentless_access": schema.BoolAttribute{
 				MarkdownDescription: "Enable agentless access",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"mobile_security": schema.BoolAttribute{
 				MarkdownDescription: "Enable mobile security",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"sbs_only_launch": schema.BoolAttribute{
 				MarkdownDescription: "Enable SBS only launch",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"using_template": schema.BoolAttribute{
 				MarkdownDescription: "Whether using a template (required for non-ZTNA applications)",
@@ -151,6 +164,9 @@ func (r *ApplicationResource) Schema(ctx context.Context, req resource.SchemaReq
 			"icon_url": schema.StringAttribute{
 				MarkdownDescription: "Application icon URL",
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"related_urls": schema.SetAttribute{
 				MarkdownDescription: "Related URLs (required for non-ZTNA applications)",
@@ -193,6 +209,9 @@ func (r *ApplicationResource) Schema(ctx context.Context, req resource.SchemaReq
 				MarkdownDescription: "Policies associated with the application",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"type": schema.StringAttribute{
@@ -245,23 +264,216 @@ func (r *ApplicationResource) Schema(ctx context.Context, req resource.SchemaReq
 				Optional:            true,
 				Computed:            true,
 				ElementType:         types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"customer_domain_fields": schema.MapAttribute{
 				MarkdownDescription: "Customer domain fields",
 				Optional:            true,
 				Computed:            true,
 				ElementType:         types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"sso": schema.DynamicAttribute{
-				MarkdownDescription: "SSO configuration - a map where values can be either strings or arrays of objects (each object is a map of string to string)",
+			"sso": schema.SingleNestedAttribute{
+				MarkdownDescription: "SSO configuration. Set `type` to one of: `saml`, `kerberos`, `basic`, `form`, `nosso`. Only include fields relevant to the chosen SSO type.",
 				Optional:            true,
 				Computed:            true,
-				CustomType:          SSOType{},
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
+				Attributes: map[string]schema.Attribute{
+					// Universal
+					"type": schema.StringAttribute{
+						MarkdownDescription: "SSO type: `saml`, `kerberos`, `basic`, `form`, or `nosso`",
+						Required:            true,
+					},
+					// SAML user-provided fields
+					"saml_type": schema.StringAttribute{
+						MarkdownDescription: "SAML role: `SP`, `IDP`, or `SP_IDP`",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"sp_initiated_only": schema.BoolAttribute{
+						MarkdownDescription: "Whether SSO is SP-initiated only",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.Bool{
+							boolplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"assertion_url": schema.StringAttribute{
+						MarkdownDescription: "SAML assertion consumer service (ACS) URL",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"audience": schema.StringAttribute{
+						MarkdownDescription: "SAML audience (entity ID of the service provider)",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"relay_state": schema.StringAttribute{
+						MarkdownDescription: "SAML relay state URL",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"sign_assertion": schema.StringAttribute{
+						MarkdownDescription: "SAML signature scope: `ASSERTION`, `BOTH`, `NONE`, or `RESPONSE`",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"name_id_source": schema.StringAttribute{
+						MarkdownDescription: "SAML NameID source: `email`, `upn`, `name`, `guid_b64`, or `sam`",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"name_id_format": schema.StringAttribute{
+						MarkdownDescription: "SAML NameID format: `unspecified`, `emailAddress`, `persistent`, `transient`, `WindowsDomainQualifiedName`, or `X509SubjectName`",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"custom_attributes": schema.ListNestedAttribute{
+						MarkdownDescription: "SAML custom attributes (max 16)",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.List{
+							listplanmodifier.UseStateForUnknown(),
+						},
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"format": schema.StringAttribute{
+									MarkdownDescription: "Attribute format: `uri`, `unspecified`, or `basic`",
+									Optional:            true,
+								},
+								"name": schema.StringAttribute{
+									MarkdownDescription: "Attribute name",
+									Required:            true,
+								},
+								"value": schema.StringAttribute{
+									MarkdownDescription: "Attribute value",
+									Required:            true,
+								},
+								"prefix_expr": schema.BoolAttribute{
+									MarkdownDescription: "Whether to use prefix expression",
+									Optional:            true,
+								},
+							},
+						},
+					},
+					// SAML server-computed fields (read-only)
+					"saml_sso_login_url": schema.StringAttribute{
+						MarkdownDescription: "SAML SSO login URL (computed by server)",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"saml_cert_issuer_name": schema.StringAttribute{
+						MarkdownDescription: "SAML certificate issuer name (computed by server)",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					// Server-computed metadata
+					"customer": schema.StringAttribute{
+						MarkdownDescription: "Customer ID associated with the SSO configuration (computed by server)",
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					// Form SSO fields
+					"action_url": schema.StringAttribute{
+						MarkdownDescription: "Form SSO action URL",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"logonform_url": schema.StringAttribute{
+						MarkdownDescription: "Form SSO logon form URL",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"username_field": schema.StringAttribute{
+						MarkdownDescription: "Form SSO username HTML field name",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"password_field": schema.StringAttribute{
+						MarkdownDescription: "Form SSO password HTML field name",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					"attribute": schema.StringAttribute{
+						MarkdownDescription: "Form SSO attribute (e.g., `email`, `upn`, `name`)",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					// Shared fields (Form, Kerberos, Basic)
+					"username_format": schema.StringAttribute{
+						MarkdownDescription: "Username format (used by Form, Kerberos, and Basic SSO)",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+					// Kerberos fields
+					"user_realm": schema.StringAttribute{
+						MarkdownDescription: "Kerberos user realm",
+						Optional:            true,
+						Computed:            true,
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						},
+					},
+				},
 			},
 			"state": schema.StringAttribute{
 				MarkdownDescription: "Application state",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf("incomplete", "complete"),
 				},
@@ -269,6 +481,9 @@ func (r *ApplicationResource) Schema(ctx context.Context, req resource.SchemaReq
 			"policy_count": schema.StringAttribute{
 				MarkdownDescription: "Number of policies associated with the application",
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -310,6 +525,148 @@ func (r *ApplicationResource) completeApplication(ctx context.Context, applicati
 		"application_id": applicationID,
 	})
 	return nil
+}
+
+// tryRecoverOrphanedApplication searches for an application that may have been partially created
+// by the backend despite returning a 500 error. It uses applicationMatchesPlanned to identify
+// the correct resource via a best-effort heuristic (see that function's comment for details).
+func (r *ApplicationResource) tryRecoverOrphanedApplication(ctx context.Context, app *Application) *ApplicationListItem {
+	apps, err := r.client.GetApplications(ctx, 0, -1, app.Name, app.Type)
+	if err != nil || apps == nil || len(apps.Applications) == 0 {
+		return nil
+	}
+
+	for _, candidate := range apps.Applications {
+		if r.applicationMatchesPlanned(ctx, &candidate, app) {
+			return &candidate
+		}
+	}
+	return nil
+}
+
+// applicationMatchesPlanned uses a best-effort heuristic to decide whether a candidate
+// ApplicationListItem (returned by the API) matches the Application that was sent in the
+// create request. Name and Type must match exactly. For all other fields, a comparison is
+// only performed when the candidate carries a non-zero value; if the candidate's field is
+// the zero value (empty string, false, nil slice) the check is skipped, because partial
+// creation may have left those fields unpersisted. This means the function can return true
+// for a candidate that is missing some fields — it is intentionally permissive to avoid
+// false negatives during orphan recovery.
+func (r *ApplicationResource) applicationMatchesPlanned(ctx context.Context, candidate *ApplicationListItem, planned *Application) bool {
+	// Name and Type must always match exactly — these are the primary identifiers
+	// used as query filters in tryRecoverOrphanedApplication.
+	if candidate.Name != planned.Name || candidate.Type != planned.Type {
+		return false
+	}
+
+	// For all remaining fields, only reject if the candidate has a non-zero value
+	// that differs from the planned value. A zero value on the candidate (empty string,
+	// false, nil slice) means the field may not have been persisted during partial
+	// creation, so we skip that comparison rather than treating it as a mismatch.
+
+	// String fields — empty string on candidate means potentially not persisted
+	if candidate.Description != "" && candidate.Description != planned.Description {
+		return false
+	}
+	if candidate.URL != "" && candidate.URL != planned.URL {
+		return false
+	}
+	if candidate.Category != "" && candidate.Category != planned.Category {
+		return false
+	}
+	if candidate.TemplateName != "" && candidate.TemplateName != planned.TemplateName {
+		return false
+	}
+	if candidate.Icon != "" && candidate.Icon != planned.Icon {
+		return false
+	}
+
+	// Boolean fields — false is the zero value, so we can only reject when the
+	// candidate is true but planned is false (a definite mismatch). When the
+	// candidate is false, we can't distinguish "not set" from "actually false".
+	if candidate.Hidden && !planned.Hidden {
+		return false
+	}
+	if candidate.AgentlessAccess && !planned.AgentlessAccess {
+		return false
+	}
+	if candidate.MobileSecurity && !planned.MobileSecurity {
+		return false
+	}
+	if candidate.SbsOnlyLaunch && !planned.SbsOnlyLaunch {
+		return false
+	}
+	if candidate.UsingTemplate && !planned.UsingTemplate {
+		return false
+	}
+
+	// Slice fields — nil/empty on candidate means potentially not persisted
+	if len(candidate.RelatedURLs) > 0 && !stringSlicesEqualSorted(candidate.RelatedURLs, planned.RelatedURLs) {
+		return false
+	}
+	if len(candidate.Keywords) > 0 && !stringSlicesEqualSorted(candidate.Keywords, planned.Keywords) {
+		return false
+	}
+
+	// Locations — only compare if candidate has locations (order-independent)
+	if len(candidate.Locations) > 0 {
+		if len(candidate.Locations) != len(planned.Locations) {
+			return false
+		}
+		locSet := make(map[string]struct{}, len(planned.Locations))
+		for _, loc := range planned.Locations {
+			locSet[loc.UUID+"\x00"+loc.Name] = struct{}{}
+		}
+		for _, loc := range candidate.Locations {
+			if _, ok := locSet[loc.UUID+"\x00"+loc.Name]; !ok {
+				return false
+			}
+		}
+	}
+
+	// Destinations — only compare if candidate has destinations (order-independent)
+	if len(candidate.Destination) > 0 {
+		if len(candidate.Destination) != len(planned.Destination) {
+			return false
+		}
+		destSet := make(map[string]struct{}, len(planned.Destination))
+		for _, d := range planned.Destination {
+			destSet[d.Destination+"\x00"+d.Port+"\x00"+d.Protocol+"\x00"+d.Subtype] = struct{}{}
+		}
+		for _, d := range candidate.Destination {
+			if _, ok := destSet[d.Destination+"\x00"+d.Port+"\x00"+d.Protocol+"\x00"+d.Subtype]; !ok {
+				return false
+			}
+		}
+	}
+
+	tflog.Debug(ctx, "spa-terraform-provider: Found matching orphaned application", map[string]any{
+		"candidate_id":   candidate.ID,
+		"candidate_name": candidate.Name,
+	})
+	return true
+}
+
+// stringSlicesEqualSorted compares two string slices for equality regardless of order.
+func stringSlicesEqualSorted(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	if len(a) == 0 {
+		return true
+	}
+	aCopy := make([]string, len(a))
+	bCopy := make([]string, len(b))
+	copy(aCopy, a)
+	copy(bCopy, b)
+	sort.Strings(aCopy)
+	sort.Strings(bCopy)
+	for i := range aCopy {
+		if aCopy[i] != bCopy[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -467,63 +824,18 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 
 	// Handle SSO fields
 	if !data.SSO.IsNull() && !data.SSO.IsUnknown() {
-		// Extract the underlying value from the Dynamic type
-		underlyingValue := data.SSO.UnderlyingValue()
-
-		// The underlying value should be a map-like structure
-		if objectValue, ok := underlyingValue.(types.Object); ok {
-			// Convert Object attributes to map[string]interface{}
-			attributes := objectValue.Attributes()
-
-			app.SSO = make(map[string]interface{}, len(attributes))
-			for key, value := range attributes {
-				// Convert each element back to a Go value
-				if dynVal, ok := value.(types.Dynamic); ok {
-					app.SSO[key] = dynVal.UnderlyingValue()
-				} else {
-					// Handle other attr.Value types
-					switch v := value.(type) {
-					case types.String:
-						app.SSO[key] = v.ValueString()
-					case types.Bool:
-						app.SSO[key] = v.ValueBool()
-					case types.Int64:
-						app.SSO[key] = v.ValueInt64()
-					case types.Number:
-						f, _ := v.ValueBigFloat().Float64()
-						app.SSO[key] = f
-					case types.List:
-						// Handle lists of objects
-						listElements := v.Elements()
-						goList := make([]interface{}, len(listElements))
-						for i, elem := range listElements {
-							if objElem, ok := elem.(types.Object); ok {
-								objAttributes := objElem.Attributes()
-								goMap := make(map[string]interface{})
-								for objKey, objVal := range objAttributes {
-									if strVal, ok := objVal.(types.String); ok {
-										goMap[objKey] = strVal.ValueString()
-									} else {
-										goMap[objKey] = fmt.Sprintf("%v", objVal)
-									}
-								}
-								goList[i] = goMap
-							} else {
-								goList[i] = fmt.Sprintf("%v", elem)
-							}
-						}
-						app.SSO[key] = goList
-					default:
-						app.SSO[key] = fmt.Sprintf("%v", value)
-					}
-				}
-			}
-		} else {
-			// Fallback: treat as a single value or other structure
-			app.SSO = map[string]interface{}{"value": underlyingValue}
+		ssoModel, ssoDiags := ssoObjectToModel(ctx, data.SSO)
+		resp.Diagnostics.Append(ssoDiags...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
+		ssoMap, ssoDiags := ssoToAPI(ctx, ssoModel)
+		resp.Diagnostics.Append(ssoDiags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		app.SSO = ssoMap
 	} else {
-		// Set to empty map if no SSO fields
 		app.SSO = nil
 	}
 
@@ -535,6 +847,61 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 	// Create the application
 	createdApp, err := r.client.CreateApplication(ctx, app)
 	if err != nil {
+		// On 500 errors, the backend may have partially created the application.
+		// Search by name+type to recover the orphan and save its ID to state,
+		// preventing duplicate incomplete applications on the next apply.
+		if strings.Contains(err.Error(), "status 500") {
+			tflog.Warn(ctx, "spa-terraform-provider: Create returned 500, attempting to recover orphaned application", map[string]any{
+				"app_name": app.Name,
+				"app_type": app.Type,
+			})
+			recovered := r.tryRecoverOrphanedApplication(ctx, app)
+			if recovered != nil {
+				data.ID = types.StringValue(recovered.ID)
+
+				// Computed fields from the plan are still "unknown" at this point.
+				// Terraform requires all values to be known after apply, so set
+				// any remaining unknown computed fields to null before saving state.
+				if data.IconURL.IsUnknown() {
+					data.IconURL = types.StringNull()
+				}
+				if data.PolicyCount.IsUnknown() {
+					data.PolicyCount = types.StringNull()
+				}
+				if data.State.IsUnknown() {
+					data.State = types.StringNull()
+				}
+				if data.Policies.IsUnknown() {
+					data.Policies = types.ListNull(types.ObjectType{
+						AttrTypes: map[string]attr.Type{
+							"type": types.StringType,
+							"data": types.MapType{ElemType: types.StringType},
+						},
+					})
+				}
+				if data.CustomProperties.IsUnknown() {
+					data.CustomProperties = types.MapNull(types.StringType)
+				}
+				if data.CustomerDomainFields.IsUnknown() {
+					data.CustomerDomainFields = types.MapNull(types.StringType)
+				}
+				if data.SSO.IsUnknown() {
+					data.SSO = types.ObjectNull(ssoAttrTypes)
+				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+				resp.Diagnostics.AddWarning(
+					"Partial Creation Detected",
+					fmt.Sprintf(
+						"Application '%s' was partially created by the backend (ID: %s) despite returning a 500 error. "+
+							"The resource has been saved to state to prevent duplicates. "+
+							"Run 'terraform apply' again to update the application to the desired configuration. "+
+							"Original error: %s",
+						app.Name, recovered.ID, err),
+				)
+				return
+			}
+		}
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create application, got error: %s", err))
 		return
 	}
@@ -629,93 +996,19 @@ func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest
 
 	// Handle SSO fields
 	if len(app.SSO) > 0 {
-		elements := make(map[string]attr.Value)
-		elementTypes := make(map[string]attr.Type)
-
-		for key, value := range app.SSO {
-			// Skip the "customer" field - it's a backend-added field that shouldn't be in state
-			if key == "customer" {
-				continue
-			}
-
-			// Skip null values - they should not appear in the Terraform configuration
-			if value == nil {
-				continue
-			}
-
-			// Convert each value to appropriate Terraform types
-			switch v := value.(type) {
-			case string:
-				elements[key] = types.StringValue(v)
-				elementTypes[key] = types.StringType
-			case bool:
-				elements[key] = types.BoolValue(v)
-				elementTypes[key] = types.BoolType
-			case int:
-				elements[key] = types.Int64Value(int64(v))
-				elementTypes[key] = types.Int64Type
-			case int64:
-				elements[key] = types.Int64Value(v)
-				elementTypes[key] = types.Int64Type
-			case float64:
-				elements[key] = types.NumberValue(big.NewFloat(v))
-				elementTypes[key] = types.NumberType
-			case []interface{}:
-				// Handle arrays by converting them to tuple of objects
-				// Using Tuple instead of List to match HCL's parsing behavior for heterogeneous collections
-				tupleElements := make([]attr.Value, len(v))
-				tupleTypes := make([]attr.Type, len(v))
-				for i, elem := range v {
-					if objMap, ok := elem.(map[string]interface{}); ok {
-						// Convert map[string]interface{} to object type
-						objElements := make(map[string]attr.Value)
-						objElementTypes := make(map[string]attr.Type)
-						for objKey, objVal := range objMap {
-							objElements[objKey] = types.StringValue(fmt.Sprintf("%v", objVal))
-							objElementTypes[objKey] = types.StringType
-						}
-						objValue, objDiag := types.ObjectValue(objElementTypes, objElements)
-						resp.Diagnostics.Append(objDiag...)
-						if resp.Diagnostics.HasError() {
-							return
-						}
-						tupleElements[i] = objValue
-						tupleTypes[i] = objValue.Type(ctx)
-					} else {
-						// Fall back to string representation
-						tupleElements[i] = types.StringValue(fmt.Sprintf("%v", elem))
-						tupleTypes[i] = types.StringType
-					}
-				}
-				// Create a tuple that can hold objects with different schemas
-				// This matches how Terraform parses array literals in HCL
-				tupleValue, tupleDiag := types.TupleValue(tupleTypes, tupleElements)
-				resp.Diagnostics.Append(tupleDiag...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-				elements[key] = tupleValue
-				elementTypes[key] = tupleValue.Type(ctx)
-			default:
-				// For any other type, convert to string but skip if it's a string representation of null
-				strValue := fmt.Sprintf("%v", v)
-				if strValue == "<nil>" || strValue == "null" || strValue == "None" {
-					continue // Skip null-like values
-				}
-				elements[key] = types.StringValue(strValue)
-				elementTypes[key] = types.StringType
-			}
-		}
-
-		// Create an object from the elements and wrap it in a custom SSO value
-		objectValue, objDiag := types.ObjectValue(elementTypes, elements)
-		resp.Diagnostics.Append(objDiag...)
+		ssoModel, ssoDiags := ssoFromAPI(ctx, app.SSO)
+		resp.Diagnostics.Append(ssoDiags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		data.SSO = SSOTypeValue(types.DynamicValue(objectValue))
+		ssoObj, objDiags := ssoModelToObject(ctx, ssoModel)
+		resp.Diagnostics.Append(objDiags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		data.SSO = ssoObj
 	} else {
-		data.SSO = SSOTypeNull()
+		data.SSO = types.ObjectNull(ssoAttrTypes)
 	}
 
 	// Handle boolean fields (these should always have values)
@@ -1025,63 +1318,18 @@ func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateReq
 
 	// Handle SSO fields
 	if !data.SSO.IsNull() && !data.SSO.IsUnknown() {
-		// Extract the underlying value from the Dynamic type
-		underlyingValue := data.SSO.UnderlyingValue()
-
-		// The underlying value should be a map-like structure
-		if objectValue, ok := underlyingValue.(types.Object); ok {
-			// Convert Object attributes to map[string]interface{}
-			attributes := objectValue.Attributes()
-
-			app.SSO = make(map[string]interface{}, len(attributes))
-			for key, value := range attributes {
-				// Convert each element back to a Go value
-				if dynVal, ok := value.(types.Dynamic); ok {
-					app.SSO[key] = dynVal.UnderlyingValue()
-				} else {
-					// Handle other attr.Value types
-					switch v := value.(type) {
-					case types.String:
-						app.SSO[key] = v.ValueString()
-					case types.Bool:
-						app.SSO[key] = v.ValueBool()
-					case types.Int64:
-						app.SSO[key] = v.ValueInt64()
-					case types.Number:
-						f, _ := v.ValueBigFloat().Float64()
-						app.SSO[key] = f
-					case types.List:
-						// Handle lists of objects
-						listElements := v.Elements()
-						goList := make([]interface{}, len(listElements))
-						for i, elem := range listElements {
-							if objElem, ok := elem.(types.Object); ok {
-								objAttributes := objElem.Attributes()
-								goMap := make(map[string]interface{})
-								for objKey, objVal := range objAttributes {
-									if strVal, ok := objVal.(types.String); ok {
-										goMap[objKey] = strVal.ValueString()
-									} else {
-										goMap[objKey] = fmt.Sprintf("%v", objVal)
-									}
-								}
-								goList[i] = goMap
-							} else {
-								goList[i] = fmt.Sprintf("%v", elem)
-							}
-						}
-						app.SSO[key] = goList
-					default:
-						app.SSO[key] = fmt.Sprintf("%v", value)
-					}
-				}
-			}
-		} else {
-			// Fallback: treat as a single value or other structure
-			app.SSO = map[string]interface{}{"value": underlyingValue}
+		ssoModel, ssoDiags := ssoObjectToModel(ctx, data.SSO)
+		resp.Diagnostics.Append(ssoDiags...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
+		ssoMap, ssoDiags := ssoToAPI(ctx, ssoModel)
+		resp.Diagnostics.Append(ssoDiags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		app.SSO = ssoMap
 	} else {
-		// Set to empty map if no SSO fields
 		app.SSO = nil
 	}
 

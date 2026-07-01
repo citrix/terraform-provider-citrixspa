@@ -1,4 +1,7 @@
 # Terraform Provider release workflow.
+#
+# Normal flow (tag push): tests → acceptance tests → goreleaser release.
+# Urgent flow (manual dispatch with skip_tests): goreleaser release only.
 name: Release
 
 # This GitHub action creates a release when a tag that matches the pattern
@@ -7,26 +10,95 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip tests and go directly to release (for urgent cases when acceptance tests are flaky)'
+        type: boolean
+        default: false
 
-# Releases need permissions to read and write the repository contents.
-# GitHub considers creating releases and uploading assets as writing contents.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  goreleaser:
+  # --------------------------------------------------------------------------
+  # Unit tests + build validation — must pass before releasing
+  # --------------------------------------------------------------------------
+  test:
+    name: Unit Tests & Build
+    if: ${{ !inputs.skip_tests }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          # Allow goreleaser to access older tag information.
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: 'go.mod'
           cache: true
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Unit Tests
+        run: go test -v ./...
+
+  # --------------------------------------------------------------------------
+  # Acceptance tests — must pass before releasing
+  # --------------------------------------------------------------------------
+  acceptance-tests:
+    name: Acceptance Tests
+    if: ${{ !inputs.skip_tests }}
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_wrapper: false
+      - name: Acceptance Tests
+        env:
+          TF_ACC: "1"
+          CITRIX_CUSTOMER_ID: ${{ secrets.CITRIX_CUSTOMER_ID }}
+          CITRIX_CLIENT_ID: ${{ secrets.CITRIX_CLIENT_ID }}
+          CITRIX_CLIENT_SECRET: ${{ secrets.CITRIX_CLIENT_SECRET }}
+        run: go test -v -count=1 ./... -timeout 120m
+
+  # --------------------------------------------------------------------------
+  # Release — runs after tests pass, or immediately when skip_tests is true
+  # --------------------------------------------------------------------------
+  goreleaser:
+    needs: [test, acceptance-tests]
+    if: |
+      always() &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.acceptance-tests.result == 'success' || needs.acceptance-tests.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Allow goreleaser to access older tag information.
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6.1.0
+        id: import_gpg
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
           distribution: goreleaser
           version: latest
@@ -34,3 +106,6 @@ jobs:
         env:
           # GitHub sets the GITHUB_TOKEN secret automatically.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GPG fingerprint used by GoReleaser to sign the SHA256SUMS checksum
+          # file, as required by the Terraform Registry.
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}

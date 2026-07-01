@@ -40,6 +40,7 @@ type testAppConfig struct {
 	relatedURLs     []string
 	keywords        []string
 	sso             string // HCL value for the sso attribute, e.g. `{ type = "nosso" }`
+	state           string // "incomplete" or "complete"; omitted if empty
 	destinations    []testDestination
 	dependsOn       []string // HCL resource addresses for depends_on, e.g. ["spa_routing_domain.foo"]
 }
@@ -85,6 +86,9 @@ func testAccApplicationConfig(cfg testAppConfig) string {
 	}
 	if cfg.sso != "" {
 		fmt.Fprintf(&b, "  sso              = %s\n", cfg.sso)
+	}
+	if cfg.state != "" {
+		fmt.Fprintf(&b, "  state            = %q\n", cfg.state)
 	}
 	if len(cfg.destinations) > 0 {
 		fmt.Fprintf(&b, "  destination = [\n")
@@ -418,6 +422,133 @@ func TestAccApplication_ztna(t *testing.T) {
 				ImportStateVerify: true,
 			},
 			// Delete testing automatically occurs in TestCase
+		},
+	})
+}
+
+// TestAccApplication_samlSSO verifies that SAML SSO applications can be created
+// and updated without "Provider produced inconsistent result after apply" errors.
+// Covers:
+// - Server-computed SSO fields (saml_sso_login_url) are stripped on create/update
+// - custom_attributes returned as JSON string are parsed correctly
+// - Null SSO values produce type-appropriate defaults
+// - SSO object shape is preserved across plan/apply cycles
+func TestAccApplication_samlSSO(t *testing.T) {
+	name := "tf-acc-test-saml-sso-app"
+	fqdn := fmt.Sprintf("%s.example.com", name)
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckApplicationDestroy,
+		Steps: []resource.TestStep{
+			// Step 1: Create with SAML SSO including writable fields only
+			{
+				Config: testAccApplicationConfig(testAppConfig{
+					resourceName: "test_saml",
+					name:         name,
+					appType:      "saas",
+					description:  "Terraform acceptance test - SAML SSO application",
+					url:          fmt.Sprintf("https://%s", fqdn),
+					relatedURLs:  []string{fmt.Sprintf("*.%s", fqdn)},
+					sso: `{
+						type              = "saml"
+						assertion_url     = "https://sp.example.com/acs"
+						audience          = "https://sp.example.com"
+						name_id_format    = "emailAddress"
+						name_id_source    = "email"
+						custom_attributes = []
+					}`,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckApplicationExistsInAPI("spa_application.test_saml"),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "name", name),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "type", "saas"),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.type", "saml"),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.assertion_url", "https://sp.example.com/acs"),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.audience", "https://sp.example.com"),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.name_id_format", "emailAddress"),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.name_id_source", "email"),
+					resource.TestCheckResourceAttrSet("spa_application.test_saml", "id"),
+					resource.TestCheckResourceAttrSet("spa_application.test_saml", "state"),
+				),
+			},
+			// Step 2: Update — change assertion_url
+			{
+				Config: testAccApplicationConfig(testAppConfig{
+					resourceName: "test_saml",
+					name:         name,
+					appType:      "saas",
+					description:  "Terraform acceptance test - SAML SSO application UPDATED",
+					url:          fmt.Sprintf("https://%s", fqdn),
+					relatedURLs:  []string{fmt.Sprintf("*.%s", fqdn)},
+					sso: `{
+						type              = "saml"
+						assertion_url     = "https://sp.example.com/acs/v2"
+						audience          = "https://sp.example.com"
+						name_id_format    = "emailAddress"
+						name_id_source    = "email"
+						custom_attributes = []
+					}`,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckApplicationExistsInAPI("spa_application.test_saml"),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "name", name),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "description", "Terraform acceptance test - SAML SSO application UPDATED"),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.type", "saml"),
+					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.assertion_url", "https://sp.example.com/acs/v2"),
+					resource.TestCheckResourceAttrSet("spa_application.test_saml", "id"),
+				),
+			},
+			// Step 3: ImportState — with SingleNestedAttribute the SSO shape is
+			// fixed, so import now works without ignoring the sso field.
+			{
+				ResourceName:      "spa_application.test_saml",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+// TestAccApplication_samlSSOComputedFieldsPopulated verifies that server-computed
+// SSO fields (saml_sso_login_url, saml_cert_issuer_name) are populated by the
+// server after create, without the user needing to set them in config.
+func TestAccApplication_samlSSOComputedFieldsPopulated(t *testing.T) {
+	name := "tf-acc-test-saml-computed"
+	fqdn := fmt.Sprintf("%s.example.com", name)
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckApplicationDestroy,
+		Steps: []resource.TestStep{
+			// Create without computed fields — they should be populated by the server
+			{
+				Config: testAccApplicationConfig(testAppConfig{
+					resourceName: "test_saml_computed",
+					name:         name,
+					appType:      "saas",
+					description:  "Terraform acceptance test - SAML SSO computed fields populated",
+					url:          fmt.Sprintf("https://%s", fqdn),
+					relatedURLs:  []string{fmt.Sprintf("*.%s", fqdn)},
+					sso: `{
+						type              = "saml"
+						assertion_url     = "https://sp.example.com/acs"
+						audience          = "https://sp.example.com"
+						name_id_format    = "emailAddress"
+						name_id_source    = "email"
+						custom_attributes = []
+					}`,
+				}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckApplicationExistsInAPI("spa_application.test_saml_computed"),
+					resource.TestCheckResourceAttr("spa_application.test_saml_computed", "name", name),
+					resource.TestCheckResourceAttr("spa_application.test_saml_computed", "sso.type", "saml"),
+					resource.TestCheckResourceAttr("spa_application.test_saml_computed", "sso.assertion_url", "https://sp.example.com/acs"),
+					// Server-computed fields should be populated
+					resource.TestCheckResourceAttrSet("spa_application.test_saml_computed", "sso.saml_sso_login_url"),
+					resource.TestCheckResourceAttrSet("spa_application.test_saml_computed", "id"),
+				),
+			},
 		},
 	})
 }

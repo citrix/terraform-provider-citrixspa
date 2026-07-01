@@ -6,7 +6,6 @@
     Platform-independent and no external dependencies required
 
 .DESCRIPTION
-    This script mirrors the functionality of spa_manager.py for Windows/PowerShell environments.
     It discovers SPA resources via Terraform data sources and generates Terraform configurations.
 
 .EXAMPLE
@@ -28,8 +27,8 @@
     ./spa_manager.ps1 -VerboseOutput            # Verbose output
 
 .NOTES
-    Author: Generated from spa_manager.py
-    Requires: PowerShell 5.1+ or PowerShell Core 7+
+    Author: Citrix SPA Team
+    Requires: PowerShell 7+
     Requires: Terraform CLI installed and in PATH
     
     Features:
@@ -39,7 +38,7 @@
     - Enhanced data collection with individual item queries for complete field data
     - Built-in testing and validation functions
     - Available features: applications, access_policies, security_groups, certificates,
-        browser_mode, routing_domains, hybrid_config, terminate_access
+        browser_mode, routing_domains, hybrid_config, terminate_access, session_policies
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Default')]
@@ -112,6 +111,10 @@ param(
     [string]$WorkDir = '.'
 )
 
+# Force UTF-8 for subprocess output so non-ASCII characters are not garbled on Windows.
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 # =============================================================================
 # GLOBAL CONSTANTS
 # =============================================================================
@@ -138,6 +141,7 @@ provider "spa" {{
   base_url    = var.base_url
   token_url   = var.token_url
   customer_id = var.customer_id
+  suppress_asb_notifications = var.suppress_asb_notifications
   {0}
   {1}
   {2}
@@ -166,6 +170,12 @@ variable "customer_id" {{
 {4}
 
 {5}
+
+variable "suppress_asb_notifications" {{
+  description = "Suppress ASB notifications during API operations"
+  type        = bool
+  default     = false
+}}
 
 '@
 
@@ -335,6 +345,26 @@ output "terminate_user_access_data" {{
 }}
 '@
 
+$script:DATA_SOURCE_SESSION_POLICY = @'
+data "spa_session_policy" "item" {{
+  id = "{0}"
+}}
+
+output "item_data" {{
+  value = data.spa_session_policy.item
+}}
+'@
+
+$script:DATA_SOURCE_SESSION_POLICIES_ALL = @'
+data "spa_session_policies" "all" {{
+{0}
+}}
+
+output "session_policies_data" {{
+  value = data.spa_session_policies.all
+}}
+'@
+
 # Resource Templates
 $script:RESOURCE_APPLICATION = @'
 resource "spa_application" "{0}" {{
@@ -457,6 +487,7 @@ Generated on: {0}
 - Applications: {1}
 - Security Groups: {2}
 - Access Policies: {3}
+- Session Policies: {10}
 - Certificates: {4}
 - Browser Modes: {5}
 - Routing Domains: {6}
@@ -464,13 +495,13 @@ Generated on: {0}
 - Terminate Machine Access: {8}
 - Terminate User Access: {9}
 
-Total Resources: {10}
-Importable Resources: {11}
-Total Unique Names: {12}
+Total Resources: {11}
+Importable Resources: {12}
+Total Unique Names: {13}
 
 ## Generated Files:
-- spa_resources.tf ({10} total, {11} importable resources - configurable fields only)
-- imports.tf ({11} import blocks)
+- spa_resources.tf ({11} total, {12} importable resources - configurable fields only)
+- imports.tf ({12} import blocks)
 
 ## Data Processing:
 - Uses in-memory data structures (no temporary JSON files)
@@ -490,7 +521,7 @@ Total Unique Names: {12}
 
 ## Platform Compatibility:
 ✓ Windows, macOS, Linux
-✓ PowerShell 5.1+ or PowerShell Core 7+ required
+✓ PowerShell 7+ required
 ✓ No external dependencies beyond terraform
 '@
 
@@ -518,6 +549,7 @@ $script:ResourceCounts = @{
     hybrid_configs          = 0
     terminate_machine_access = 0
     terminate_user_access   = 0
+    session_policies        = 0
 }
 
 # In-memory data storage to replace temporary JSON files
@@ -531,18 +563,20 @@ $script:ResourceData = @{
     hybrid_config           = @{}
     terminate_machine_access = @{}
     terminate_user_access   = @{}
+    session_policies        = @{}
 }
 
 # Feature aliases for enable flag
 $script:FeatureAliases = @{
-    applications    = @('app', 'apps', 'application', 'applications')
-    access_policies = @('policy', 'policies', 'access_policy', 'access_policies')
-    routing_domains = @('routing', 'domain', 'domains', 'routing_domain', 'routing_domains')
-    browser_mode    = @('browser', 'browser_mode')
-    hybrid_config   = @('hybrid', 'hybrid_config')
-    certificates    = @('cert', 'certificate', 'certificates')
-    security_groups = @('group', 'groups', 'security_group', 'security_groups')
+    applications     = @('app', 'apps', 'application', 'applications')
+    access_policies  = @('policy', 'policies', 'access_policy', 'access_policies')
+    routing_domains  = @('routing', 'domain', 'domains', 'routing_domain', 'routing_domains')
+    browser_mode     = @('browser', 'browser_mode')
+    hybrid_config    = @('hybrid', 'hybrid_config')
+    certificates     = @('cert', 'certificate', 'certificates')
+    security_groups  = @('group', 'groups', 'security_group', 'security_groups')
     terminate_access = @('terminate', 'terminate_access', 'terminate_machine', 'terminate_user', 'terminate_machine_access', 'terminate_user_access')
+    session_policies = @('session', 'session_policy', 'session_policies')
 }
 
 # List key mapping
@@ -554,6 +588,7 @@ $script:ListKeyMapping = @{
     certificates            = 'certificates'
     terminate_machine_access = 'machines'
     terminate_user_access   = 'users'
+    session_policies        = 'session_policies'
 }
 
 # List type mapping
@@ -565,6 +600,7 @@ $script:ListTypeMapping = @{
     certificates            = 'certificate'
     terminate_machine_access = 'machine'
     terminate_user_access   = 'users'
+    session_policies        = 'session_policy'
 }
 
 # Feature flags
@@ -583,6 +619,7 @@ $script:DetailsForPolicies = $true
 $script:DetailsForRoutingDomains = $false
 $script:DetailsForSecurityGroups = $false
 $script:DetailsForCertificates = $false
+$script:DetailsForSessionPolicies = $true
 
 # Default limit (-1 means no limit)
 $script:DefaultLimit = -1
@@ -778,19 +815,21 @@ function Format-DataSourceConfig {
     )
     
     $templates = @{
-        'application'            = $script:DATA_SOURCE_APPLICATION
-        'access_policy'          = $script:DATA_SOURCE_ACCESS_POLICY
-        'security_group'         = $script:DATA_SOURCE_SECURITY_GROUP
-        'routing_domain'         = $script:DATA_SOURCE_ROUTING_DOMAIN
-        'applications_all'       = $script:DATA_SOURCE_APPLICATIONS_ALL
-        'access_policies_all'    = $script:DATA_SOURCE_ACCESS_POLICIES_ALL
-        'security_groups_all'    = $script:DATA_SOURCE_SECURITY_GROUPS_ALL
-        'routing_domains_all'    = $script:DATA_SOURCE_ROUTING_DOMAINS_ALL
-        'certificates_all'       = $script:DATA_SOURCE_CERTIFICATES_ALL
-        'browser_mode'           = $script:DATA_SOURCE_BROWSER_MODE
-        'hybrid_config'          = $script:DATA_SOURCE_HYBRID_CONFIG
+        'application'              = $script:DATA_SOURCE_APPLICATION
+        'access_policy'            = $script:DATA_SOURCE_ACCESS_POLICY
+        'security_group'           = $script:DATA_SOURCE_SECURITY_GROUP
+        'routing_domain'           = $script:DATA_SOURCE_ROUTING_DOMAIN
+        'applications_all'         = $script:DATA_SOURCE_APPLICATIONS_ALL
+        'access_policies_all'      = $script:DATA_SOURCE_ACCESS_POLICIES_ALL
+        'security_groups_all'      = $script:DATA_SOURCE_SECURITY_GROUPS_ALL
+        'routing_domains_all'      = $script:DATA_SOURCE_ROUTING_DOMAINS_ALL
+        'certificates_all'         = $script:DATA_SOURCE_CERTIFICATES_ALL
+        'browser_mode'             = $script:DATA_SOURCE_BROWSER_MODE
+        'hybrid_config'            = $script:DATA_SOURCE_HYBRID_CONFIG
         'terminate_machine_access' = $script:DATA_SOURCE_TERMINATE_MACHINE_ACCESS
-        'terminate_user_access'  = $script:DATA_SOURCE_TERMINATE_USER_ACCESS
+        'terminate_user_access'    = $script:DATA_SOURCE_TERMINATE_USER_ACCESS
+        'session_policy'           = $script:DATA_SOURCE_SESSION_POLICY
+        'session_policies_all'     = $script:DATA_SOURCE_SESSION_POLICIES_ALL
     }
     
     $template = $templates[$DataSourceType]
@@ -831,6 +870,12 @@ function Format-DataSourceConfig {
                 return $template -f $Parameters['limit_config']
             }
             'terminate_user_access' {
+                return $template -f $Parameters['limit_config']
+            }
+            'session_policy' {
+                return $template -f $Parameters['item_id']
+            }
+            'session_policies_all' {
                 return $template -f $Parameters['limit_config']
             }
             default {
@@ -929,6 +974,7 @@ function Set-AllFeatures {
     $script:EnableCertificates = $false  # Disabled for now (matches Python)
     $script:EnableSecurityGroups = $Value
     $script:EnableTerminateAccess = $Value
+    $script:EnableSessionPolicies = $Value
 }
 
 function Test-Dependencies {
@@ -943,8 +989,8 @@ function Test-Dependencies {
     
     # Check PowerShell version
     $psVersion = $PSVersionTable.PSVersion
-    if ($psVersion.Major -lt 5 -or ($psVersion.Major -eq 5 -and $psVersion.Minor -lt 1)) {
-        Write-ErrorMessage "PowerShell 5.1 or higher is required"
+    if ($psVersion.Major -lt 7) {
+        Write-ErrorMessage "PowerShell 7.0 or higher is required (current: $($psVersion.ToString()))"
         return $false
     }
     else {
@@ -1191,6 +1237,7 @@ function Invoke-TerraformQuery {
                 elseif ($null -ne $tfOutputs.hybrid_config_data) { $outputKey = 'hybrid_config_data' }
                 elseif ($null -ne $tfOutputs.terminate_machine_access_data) { $outputKey = 'terminate_machine_access_data' }
                 elseif ($null -ne $tfOutputs.terminate_user_access_data) { $outputKey = 'terminate_user_access_data' }
+                elseif ($null -ne $tfOutputs.session_policies_data) { $outputKey = 'session_policies_data' }
                 
                 if ($outputKey -and $null -ne $tfOutputs.$outputKey) {
                     # Extract the value from the terraform output structure
@@ -1303,6 +1350,9 @@ function Get-IndividualItem {
                 # Use fqdn for routing domains (that's what the data source expects)
                 $fqdn = if ($ItemName) { $ItemName } else { $ItemId }
                 $config = Format-DataSourceConfig -DataSourceType 'routing_domain' -Parameters @{ item_fqdn = $fqdn }
+            }
+            'session_policy' {
+                $config = Format-DataSourceConfig -DataSourceType 'session_policy' -Parameters @{ item_id = $ItemId }
             }
             default {
                 # Unsupported item type for individual queries
@@ -1589,6 +1639,48 @@ function Get-AccessPolicies {
     return $success
 }
 
+function Get-SessionPolicies {
+    <#
+    .SYNOPSIS
+        List session policies and generate JSON data
+    #>
+    param([string[]]$Ids = @())
+    
+    if (-not $script:EnableSessionPolicies) {
+        return $true
+    }
+    
+    Write-Header "Listing Session Policies"
+    
+    $success = $false
+    
+    if ($Ids -and $Ids.Count -gt 0) {
+        $data = @()
+        for ($i = 0; $i -lt $Ids.Count; $i++) {
+            $data += @{ id = $Ids[$i]; name = "session_policy_$($i+1)" }
+        }
+        $script:ResourceData['session_policies'] = @{
+            timestamp        = (Get-Date).ToString('o')
+            source           = 'manual_query'
+            session_policies = $data
+        }
+        $success = $true
+    }
+    else {
+        $limitConfig = Get-LimitConfig
+        $config = Format-DataSourceConfig -DataSourceType 'session_policies_all' -Parameters @{ limit_config = $limitConfig }
+        
+        $success = Invoke-TerraformQuery -ConfigContent $config -DataKey 'session_policies'
+    }
+    
+    if ($success -and $script:QueryIndividualDetails -and $script:DetailsForSessionPolicies) {
+        # Enhance with individual queries to get full rule/condition detail
+        Update-ResourceDataWithIndividualQueries -DataKey 'session_policies'
+    }
+    
+    return $success
+}
+
 function Get-SecurityGroups {
     <#
     .SYNOPSIS
@@ -1765,6 +1857,43 @@ function Get-TerminateUserAccess {
     return Invoke-TerraformQuery -ConfigContent $config -DataKey 'terminate_user_access'
 }
 
+function Save-TerraformEnv {
+    <#
+    .SYNOPSIS
+        Save and clear environment variables that can corrupt terraform invocations.
+    .DESCRIPTION
+        TF_LOG, TF_LOG_CORE  - cause timestamped log lines to bleed into captured stderr,
+                               corrupting 'terraform output -json' parsing.
+        TF_CLI_ARGS_output   - can change output format away from JSON (e.g. -raw).
+        TF_CLI_ARGS          - injects flags into every subcommand, including ones that
+                               don't support those flags (e.g. -json injected into fmt).
+        Returns a hashtable that must be passed to Restore-TerraformEnv when done.
+    #>
+    $saved = @{
+        TF_LOG             = $env:TF_LOG
+        TF_LOG_CORE        = $env:TF_LOG_CORE
+        TF_CLI_ARGS_output = $env:TF_CLI_ARGS_output
+        TF_CLI_ARGS        = $env:TF_CLI_ARGS
+    }
+    $env:TF_LOG             = $null
+    $env:TF_LOG_CORE        = $null
+    $env:TF_CLI_ARGS_output = $null
+    $env:TF_CLI_ARGS        = $null
+    return $saved
+}
+
+function Restore-TerraformEnv {
+    <#
+    .SYNOPSIS
+        Restore environment variables previously saved by Save-TerraformEnv.
+    #>
+    param([hashtable]$Saved)
+    $env:TF_LOG             = $Saved['TF_LOG']
+    $env:TF_LOG_CORE        = $Saved['TF_LOG_CORE']
+    $env:TF_CLI_ARGS_output = $Saved['TF_CLI_ARGS_output']
+    $env:TF_CLI_ARGS        = $Saved['TF_CLI_ARGS']
+}
+
 function Find-Resources {
     <#
     .SYNOPSIS
@@ -1777,6 +1906,7 @@ function Find-Resources {
     $discoveryFunctions = @(
         { param($ids) Get-Applications -Ids $ids },
         { param($ids) Get-AccessPolicies -Ids $ids },
+        { param($ids) Get-SessionPolicies -Ids $ids },
         { param($ids) Get-SecurityGroups -Ids $ids },
         { param($ids) Get-RoutingDomains -Ids $ids },
         { param($ids) Get-Certificates -Ids $ids },
@@ -1932,7 +2062,10 @@ function ConvertTo-EscapedTerraformString {
     $s = $s -replace '\\', '\\'
     # Escape quotes
     $s = $s -replace '"', '\"'
-    # Note: newlines are handled separately in description fields using heredoc syntax
+    # Escape newlines
+    $s = $s -replace "`r`n", '\n'
+    $s = $s -replace "`n", '\n'
+    $s = $s -replace "`r", '\r'
     return $s
 }
 
@@ -2122,6 +2255,67 @@ function ConvertTo-HclMap {
     return "{ $($items -join ', ') }"
 }
 
+function ConvertTo-SsoNormalized {
+    <#
+    .SYNOPSIS
+        Normalize SSO hashtable values: parse JSON-encoded strings into native arrays
+        and recursively convert PSCustomObject items to hashtables for ConvertTo-HclMap.
+        API already returns snake_case keys so no key renaming is needed.
+    #>
+    param([hashtable]$SsoDict)
+
+    if ($null -eq $SsoDict -or $SsoDict.Count -eq 0) {
+        return $SsoDict
+    }
+
+    $result = @{}
+    foreach ($k in $SsoDict.Keys) {
+        $val = $SsoDict[$k]
+
+        # API quirk: custom_attributes (and potentially other fields) may arrive
+        # as a JSON-encoded string like "[]" or "[{...}]" instead of a native array.
+        # Parse it into a real array so ConvertTo-HclMap emits [] not "[]".
+        if ($val -is [string] -and $val.TrimStart().StartsWith('[')) {
+            try {
+                $parsed = $val | ConvertFrom-Json -Depth 100
+                # ConvertFrom-Json returns $null for "[]" in some PS versions; normalise to empty array
+                if ($null -eq $parsed) { $val = @() } else { $val = @($parsed) }
+            }
+            catch {
+                # Not valid JSON — keep the original string value
+            }
+        }
+
+        # Recursively normalize array items (e.g. custom_attributes list entries)
+        if ($val -is [array]) {
+            $converted = @()
+            foreach ($item in $val) {
+                if ($item -is [hashtable]) {
+                    $converted += ConvertTo-SsoNormalized $item
+                }
+                elseif ($item -is [PSCustomObject]) {
+                    $h = @{}
+                    $item.PSObject.Properties | ForEach-Object { $h[$_.Name] = $_.Value }
+                    $converted += ConvertTo-SsoNormalized $h
+                }
+                else {
+                    $converted += $item
+                }
+            }
+            $result[$k] = $converted
+        }
+        elseif ($val -is [PSCustomObject]) {
+            $h = @{}
+            $val.PSObject.Properties | ForEach-Object { $h[$_.Name] = $_.Value }
+            $result[$k] = ConvertTo-SsoNormalized $h
+        }
+        else {
+            $result[$k] = $val
+        }
+    }
+    return $result
+}
+
 # =============================================================================
 # RESOURCE GENERATION FUNCTIONS
 # =============================================================================
@@ -2172,21 +2366,10 @@ function New-ApplicationResource {
     # Handle optional fields
     $optionalFields = @()
     
-    # Special handling for description field (use heredoc for multiline)
+    # Special handling for description field
     $description = Get-PropValue $App 'description'
     if ($null -ne $description) {
-        if ($description -match '[\r\n]') {
-            # Use heredoc syntax for multiline descriptions
-            if (-not $description.EndsWith("`n")) {
-                $optionalFields += "  description = <<EOT`n`$`{~if true`}$description`$`{endif~`}`nEOT"
-            }
-            else {
-                $optionalFields += "  description = <<EOT`n${description}EOT"
-            }
-        }
-        else {
-            $optionalFields += "  description      = `"$(ConvertTo-EscapedTerraformString $description)`""
-        }
+        $optionalFields += "  description      = `"$(ConvertTo-EscapedTerraformString $description)`""
     }
     
     # Optional string fields
@@ -2257,20 +2440,25 @@ function New-ApplicationResource {
     
     # Handle SSO field
     $appSso = Get-PropValue $App 'sso'
+    # Server-computed SSO fields that must NOT appear in generated Terraform config.
+    # Including them causes "Provider produced inconsistent result after apply" errors
+    # because the server overwrites them with computed values on every read.
+    $ssoComputedFields = @('customer', 'application_id', 'saml_sso_login_url', 'saml_cert_issuer_name')
     if ($null -ne $appSso) {
         if ($appSso -is [hashtable] -or $appSso -is [PSCustomObject]) {
-            # Filter out 'customer' field from sso
+            # Filter out server-computed fields from sso
             $ssoFiltered = @{}
             if ($appSso -is [PSCustomObject]) {
-                $appSso.PSObject.Properties | Where-Object { $_.Name -ne 'customer' } | ForEach-Object {
+                $appSso.PSObject.Properties | Where-Object { $_.Name -notin $ssoComputedFields } | ForEach-Object {
                     $ssoFiltered[$_.Name] = $_.Value
                 }
             }
             else {
                 foreach ($k in $appSso.Keys) {
-                    if ($k -ne 'customer') { $ssoFiltered[$k] = $appSso[$k] }
+                    if ($k -notin $ssoComputedFields) { $ssoFiltered[$k] = $appSso[$k] }
                 }
             }
+            $ssoFiltered = ConvertTo-SsoNormalized $ssoFiltered
             $ssoHcl = ConvertTo-HclMap $ssoFiltered
             $optionalFields += "  sso             = $ssoHcl"
         }
@@ -2280,10 +2468,11 @@ function New-ApplicationResource {
                     $ssoDict = $appSso | ConvertFrom-Json -Depth 100
                     $ssoFiltered = @{}
                     if ($ssoDict -is [PSCustomObject]) {
-                        $ssoDict.PSObject.Properties | Where-Object { $_.Name -ne 'customer' } | ForEach-Object {
+                        $ssoDict.PSObject.Properties | Where-Object { $_.Name -notin $ssoComputedFields } | ForEach-Object {
                             $ssoFiltered[$_.Name] = $_.Value
                         }
                     }
+                    $ssoFiltered = ConvertTo-SsoNormalized $ssoFiltered
                     $ssoHcl = ConvertTo-HclMap $ssoFiltered
                     $optionalFields += "  sso             = $ssoHcl"
                 }
@@ -2447,12 +2636,6 @@ function New-AccessRuleBlock {
     }
     
     $ruleAttrs = @()
-    
-    # Optional ID field
-    $ruleId = Get-PropValue $Rule 'id'
-    if ($ruleId) {
-        $ruleAttrs += "      id = `"$(ConvertTo-EscapedTerraformString $ruleId)`""
-    }
     
     # Required fields
     $name = Get-PropValue $Rule 'name' ''
@@ -2652,17 +2835,7 @@ function New-AccessPolicyResource {
     # Special handling for description field
     $description = Get-PropValue $Policy 'description'
     if ($null -ne $description) {
-        if ($description -match '[\r\n]') {
-            if (-not $description.EndsWith("`n")) {
-                $optionalFields += "  description = <<EOT`n`$`{~if true`}$description`$`{endif~`}`nEOT"
-            }
-            else {
-                $optionalFields += "  description = <<EOT`n${description}EOT"
-            }
-        }
-        else {
-            $optionalFields += "  description = `"$(ConvertTo-EscapedTerraformString $description)`""
-        }
+        $optionalFields += "  description = `"$(ConvertTo-EscapedTerraformString $description)`""
     }
     
     # Boolean field
@@ -2698,6 +2871,9 @@ function New-AccessPolicyResource {
         else {
             $optionalFields += "  apps = []"
         }
+    }
+    else {
+        $optionalFields += "  apps = []"
     }
     
     # Conditions field
@@ -2850,7 +3026,7 @@ function New-SecurityGroupResource {
     $systemDataOut = Get-PropValue $system 'data_out' 'disabled'
     
     # Required unpublished app configuration
-    $unpublishedApp = Get-PropValue $Group 'unpublishedApp' @{}
+    $unpublishedApp = Get-PropValue $Group 'unpublished_app' @{}
     $unpublishedAppDataIn = Get-PropValue $unpublishedApp 'data_in' 'disabled'
     $unpublishedAppDataOut = Get-PropValue $unpublishedApp 'data_out' 'disabled'
     
@@ -3040,6 +3216,175 @@ function New-RoutingDomainResource {
     return @($safeName, $resource)
 }
 
+function New-SessionPolicyRuleBlock {
+    <#
+    .SYNOPSIS
+        Generate HCL for one rule inside the rule = [...] list of a spa_session_policy resource
+    #>
+    param([object]$Rule)
+
+    function Get-PropValue($obj, $propName, $default = $null) {
+        if ($obj -is [PSCustomObject]) { $val = $obj.$propName; if ($null -ne $val) { return $val } }
+        elseif ($obj -is [hashtable]) { if ($obj.ContainsKey($propName)) { return $obj[$propName] } }
+        return $default
+    }
+
+    $ruleAttrs = @()
+
+    $id = Get-PropValue $Rule 'id'
+    if ($null -ne $id -and $id -ne '') {
+        $ruleAttrs += "      id = `"$(ConvertTo-EscapedTerraformString $id)`""
+    }
+
+    $name = Get-PropValue $Rule 'name'
+    if ($null -ne $name -and $name -ne '') {
+        $ruleAttrs += "      name = `"$(ConvertTo-EscapedTerraformString $name)`""
+    }
+
+    $description = Get-PropValue $Rule 'description'
+    if ($null -ne $description) {
+        $ruleAttrs += "      description = `"$(ConvertTo-EscapedTerraformString $description)`""
+    }
+
+    $priority = Get-PropValue $Rule 'priority'
+    if ($null -ne $priority) {
+        $ruleAttrs += "      priority = $priority"
+    }
+
+    $active = Get-PropValue $Rule 'active'
+    if ($null -ne $active) {
+        $ruleAttrs += "      active = $($active.ToString().ToLower())"
+    }
+
+    # Actions block — only emit non-empty fields
+    $actions = Get-PropValue $Rule 'actions'
+    if ($null -ne $actions) {
+        $actionFields = @()
+        $routing = Get-PropValue $actions 'routing'
+        if ($null -ne $routing -and $routing -ne '') {
+            $actionFields += "        routing = `"$(ConvertTo-EscapedTerraformString $routing)`""
+        }
+        $disableSg = Get-PropValue $actions 'disable_security_groups'
+        if ($null -ne $disableSg -and $disableSg -ne '') {
+            $actionFields += "        disable_security_groups = `"$(ConvertTo-EscapedTerraformString $disableSg)`""
+        }
+        $localLan = Get-PropValue $actions 'local_lan_access'
+        if ($null -ne $localLan -and $localLan -ne '') {
+            $actionFields += "        local_lan_access = `"$(ConvertTo-EscapedTerraformString $localLan)`""
+        }
+        if ($actionFields.Count -gt 0) {
+            $actionsContent = $actionFields -join "`n"
+            $ruleAttrs += "      actions = {`n$actionsContent`n      }"
+        }
+    }
+
+    # Condition blocks
+    $conditions = Get-PropValue $Rule 'condition' @()
+    if (-not $conditions) { $conditions = @() }
+    $conditionsArray = @($conditions)
+    if ($conditionsArray.Count -gt 0) {
+        $conditionBlocks = @()
+        foreach ($cond in $conditionsArray) {
+            $condAttrs = @()
+
+            $condType = Get-PropValue $cond 'type' ''
+            $condAttrs += "          type = `"$condType`""
+
+            $operator = Get-PropValue $cond 'operator' ''
+            $condAttrs += "          operator = `"$operator`""
+
+            $values = Get-PropValue $cond 'values' @()
+            $valuesStr = ConvertTo-TerraformStringList @($values)
+            $condAttrs += "          values = $valuesStr"
+
+            $tagSource = Get-PropValue $cond 'tag_source'
+            if ($null -eq $tagSource) { $tagSource = Get-PropValue $cond 'tagSource' }
+            if ($null -ne $tagSource) {
+                $condAttrs += "          tag_source = `"$(ConvertTo-EscapedTerraformString $tagSource)`""
+            }
+
+            $tagKey = Get-PropValue $cond 'tag_key'
+            if ($null -eq $tagKey) { $tagKey = Get-PropValue $cond 'tagKey' }
+            if ($null -ne $tagKey) {
+                $condAttrs += "          tag_key = `"$(ConvertTo-EscapedTerraformString $tagKey)`""
+            }
+
+            $metadata = Get-PropValue $cond 'metadata'
+            if ($null -ne $metadata) {
+                $hasEntries = ($metadata -is [PSCustomObject] -and ($metadata.PSObject.Properties | Measure-Object).Count -gt 0) -or
+                              ($metadata -is [hashtable] -and $metadata.Count -gt 0)
+                if ($hasEntries) {
+                    $metadataHcl = ConvertTo-HclDict $metadata
+                    $condAttrs += "          metadata = $metadataHcl"
+                }
+            }
+
+            $condContent = $condAttrs -join "`n"
+            $conditionBlocks += "        {`n$condContent`n        }"
+        }
+        $conditionsContent = $conditionBlocks -join ",`n"
+        $ruleAttrs += "      condition = [`n$conditionsContent`n      ]"
+    }
+
+    $ruleContent = $ruleAttrs -join "`n"
+    return "    {`n$ruleContent`n    }"
+}
+
+function New-SessionPolicyResource {
+    <#
+    .SYNOPSIS
+        Generate terraform resource block for spa_session_policy (without read-only fields)
+    #>
+    param([object]$Policy)
+
+    function Get-PropValue($obj, $propName, $default = $null) {
+        if ($obj -is [PSCustomObject]) { $val = $obj.$propName; if ($null -ne $val) { return $val } }
+        elseif ($obj -is [hashtable]) { if ($obj.ContainsKey($propName)) { return $obj[$propName] } }
+        return $default
+    }
+
+    $name = Get-PropValue $Policy 'name' ''
+    $safeName = Get-SafeTerraformName -Name $name -Prefix 'sp'
+
+    $policyName = ConvertTo-EscapedTerraformString $name
+    $active = Get-PropValue $Policy 'active' $false
+
+    $lines = @()
+    $lines += "resource `"spa_session_policy`" `"$safeName`" {"
+    $lines += "  name   = `"$policyName`""
+    $lines += "  active = $($active.ToString().ToLower())"
+
+    $description = Get-PropValue $Policy 'description'
+    if ($null -ne $description) {
+        $lines += "  description = `"$(ConvertTo-EscapedTerraformString $description)`""
+    }
+
+    $priority = Get-PropValue $Policy 'priority'
+    if ($null -ne $priority -and [int]$priority -ne 0) {
+        $lines += "  priority = $priority"
+    }
+
+    # Rules (Required field) — data source output uses 'generic_rules'
+    $rules = Get-PropValue $Policy 'generic_rules' @()
+    $rulesArray = @($rules)
+
+    if ($rulesArray.Count -gt 0) {
+        $ruleBlocks = @()
+        foreach ($rule in $rulesArray) {
+            $ruleBlocks += New-SessionPolicyRuleBlock -Rule $rule
+        }
+        $rulesContent = $ruleBlocks -join ",`n"
+        $lines += "  generic_rules = [`n$rulesContent`n  ]"
+    }
+    else {
+        $lines += "  generic_rules = []"
+    }
+
+    $lines += "}"
+    $resource = ($lines -join "`n") + "`n"
+    return @($safeName, $resource)
+}
+
 function Get-ResourceData {
     <#
     .SYNOPSIS
@@ -3102,6 +3447,11 @@ function Get-MemoryDataSummary {
                 'terminate_user_access' {
                     if ($data.ContainsKey('users')) {
                         $summary[$key] = @($data['users']).Count
+                    } else { $summary[$key] = 0 }
+                }
+                'session_policies' {
+                    if ($data.ContainsKey('session_policies')) {
+                        $summary[$key] = @($data['session_policies']).Count
                     } else { $summary[$key] = 0 }
                 }
                 { $_ -in @('browser_mode', 'hybrid_config') } {
@@ -3222,6 +3572,27 @@ function New-TerraformResources {
             }
             
             $script:ResourceCounts['access_policies']++
+        }
+    }
+    
+    # Generate session policies
+    $spData = Get-ResourceData 'session_policies'
+    if ($spData -and $spData.ContainsKey('session_policies')) {
+        $resources += "# Session Policies"
+        foreach ($policy in $spData['session_policies']) {
+            $result = New-SessionPolicyResource -Policy $policy
+            $safeName = $result[0]
+            $resource = $result[1]
+            $resources += $resource
+            $resources += ""
+            
+            # Add import command
+            $policyId = Get-PropValue $policy 'id' (Get-PropValue $policy 'name' '')
+            if ($policyId) {
+                $importCommands += "terraform import spa_session_policy.$safeName `"$policyId`""
+            }
+            
+            $script:ResourceCounts['session_policies']++
         }
     }
     
@@ -3524,6 +3895,7 @@ function Get-SummaryReport {
         $script:ResourceCounts['hybrid_configs'],
         $script:ResourceCounts['terminate_machine_access'],
         $script:ResourceCounts['terminate_user_access'],
+        $script:ResourceCounts['session_policies'],
         $totalResources,
         $importableResources,
         $script:UsedNames.Count
@@ -3557,8 +3929,7 @@ function Remove-TempFiles {
         'provider.tf',
         'terraform-config-out',
         'spa_resources.tf',
-        'imports.tf',
-        'import_resources.py'  # Keep for backwards compatibility cleanup
+        'imports.tf'
     )
     
     $removedCount = 0
@@ -3627,7 +3998,7 @@ function Invoke-Tests {
     Write-Header "Running Basic Functionality Tests"
     
     $tests = @(
-        @{ Name = 'PowerShell version'; Test = { $PSVersionTable.PSVersion.Major -ge 5 } },
+        @{ Name = 'PowerShell version'; Test = { $PSVersionTable.PSVersion.Major -ge 7 } },
         @{ Name = 'Work directory exists'; Test = { Test-Path $script:WorkDir } },
         @{ Name = 'Can create temp file'; Test = { Test-FileCreation } },
         @{ Name = 'JSON parsing'; Test = { Test-JsonParsing } },
@@ -4236,6 +4607,7 @@ function Initialize-SPAManager {
         applications            = 0
         security_groups         = 0
         access_policies         = 0
+        session_policies        = 0
         certificates            = 0
         browser_modes           = 0
         routing_domains         = 0
@@ -4248,6 +4620,7 @@ function Initialize-SPAManager {
     $script:ResourceData = @{
         applications            = @{}
         access_policies         = @{}
+        session_policies        = @{}
         security_groups         = @{}
         routing_domains         = @{}
         certificates            = @{}
@@ -4271,6 +4644,7 @@ function Initialize-SPAManager {
         $script:EnableCertificates = $false
         $script:EnableSecurityGroups = $false
         $script:EnableTerminateAccess = $false
+        $script:EnableSessionPolicies = $false
         
         foreach ($feature in $EnabledFeatures) {
             $featureLower = $feature.ToLower()
@@ -4282,6 +4656,7 @@ function Initialize-SPAManager {
             if ($featureLower -in $script:FeatureAliases['certificates']) { $script:EnableCertificates = $true }
             if ($featureLower -in $script:FeatureAliases['security_groups']) { $script:EnableSecurityGroups = $true }
             if ($featureLower -in $script:FeatureAliases['terminate_access']) { $script:EnableTerminateAccess = $true }
+            if ($featureLower -in $script:FeatureAliases['session_policies']) { $script:EnableSessionPolicies = $true }
         }
     }
     
@@ -4299,12 +4674,17 @@ function Main {
         Main entry point
     #>
     
+    # Suppress env vars that can disrupt terraform invocations for the entire
+    # lifetime of the script. Restored at the end of Main.
+    $savedEnv = Save-TerraformEnv
+
     # Initialize manager
     try {
         Initialize-SPAManager -WorkDirectory $WorkDir -EnabledFeatures $Enable
     }
     catch {
         Write-ErrorMessage "Failed to initialize SPA Manager: $_"
+        Restore-TerraformEnv -Saved $savedEnv
         exit 1
     }
     
@@ -4358,9 +4738,11 @@ function Main {
         }
         
         if ($success) {
+            Restore-TerraformEnv -Saved $savedEnv
             exit 0
         }
         else {
+            Restore-TerraformEnv -Saved $savedEnv
             exit 1
         }
     }
@@ -4369,6 +4751,7 @@ function Main {
         if ($script:DebugMode) {
             Write-Host $_.ScriptStackTrace -ForegroundColor Red
         }
+        Restore-TerraformEnv -Saved $savedEnv
         exit 1
     }
 }

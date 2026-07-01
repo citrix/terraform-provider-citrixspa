@@ -39,6 +39,7 @@ type AccessPolicyListDataSourceModel struct {
 	Description types.String                `tfsdk:"description"`
 	Active      types.Bool                  `tfsdk:"active"`
 	Priority    types.Int64                 `tfsdk:"priority"`
+	Modified    types.String                `tfsdk:"modified"`
 	Apps        types.Set                   `tfsdk:"apps"`
 	AccessRules []AccessRuleDataSourceModel `tfsdk:"access_rules"`
 }
@@ -100,6 +101,10 @@ func (d *AccessPoliciesDataSource) Schema(ctx context.Context, req datasource.Sc
 							MarkdownDescription: "Set of application IDs associated with the access policy",
 							Computed:            true,
 							ElementType:         types.StringType,
+						},
+						"modified": schema.StringAttribute{
+							MarkdownDescription: "Time the access policy was last modified (ISO 8601, e.g. 2026-05-11T09:49:40Z)",
+							Computed:            true,
 						},
 						"access_rules": schema.ListNestedAttribute{
 							MarkdownDescription: "Access rules for the access policy",
@@ -454,6 +459,7 @@ func (d *AccessPoliciesDataSource) Read(ctx context.Context, req datasource.Read
 			Description: types.StringValue(policy.Description),
 			Active:      types.BoolValue(policy.Active),
 			Priority:    types.Int64Value(int64(policy.Priority)),
+			Modified:    types.StringValue(policy.Modified),
 			Apps:        apps,
 			AccessRules: accessRules,
 		}

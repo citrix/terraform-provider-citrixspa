@@ -114,6 +114,7 @@ func TestAccApplicationDataSource_byName(t *testing.T) {
 					resource.TestCheckResourceAttr("data.spa_application.by_name", "keywords.#", "1"),
 					resource.TestCheckTypeSetElemAttr("data.spa_application.by_name", "keywords.*", "acc-test"),
 					resource.TestCheckResourceAttrSet("data.spa_application.by_name", "state"),
+					resource.TestCheckResourceAttrSet("data.spa_application.by_name", "created_time"),
 					// Data source values must match the resource
 					resource.TestCheckResourceAttrPair(
 						"data.spa_application.by_name", "id",
@@ -167,6 +168,7 @@ func TestAccApplicationDataSource_byID(t *testing.T) {
 					resource.TestCheckResourceAttr("data.spa_application.by_id", "type", "web"),
 					resource.TestCheckResourceAttr("data.spa_application.by_id", "description", "DS by ID acceptance test"),
 					resource.TestCheckResourceAttrSet("data.spa_application.by_id", "state"),
+					resource.TestCheckResourceAttrSet("data.spa_application.by_id", "created_time"),
 					// Data source values must match the resource
 					resource.TestCheckResourceAttrPair(
 						"data.spa_application.by_id", "id",
@@ -287,6 +289,68 @@ func TestAccApplicationDataSource_notFound(t *testing.T) {
 			{
 				Config:      testAccApplicationDataSourceNotFoundConfig(),
 				ExpectError: regexp.MustCompile(`(?i)(application not found|no application found|unable to read)`),
+			},
+		},
+	})
+}
+
+// TestAccApplicationDataSource_samlSSO verifies the data source correctly reads
+// SAML SSO applications, handling computed field exclusion, null SSO values,
+// and custom_attributes returned as JSON strings from the API.
+func TestAccApplicationDataSource_samlSSO(t *testing.T) {
+	name := "tf-acc-ds-app-saml-sso"
+	fqdn := fmt.Sprintf("%s.example.com", name)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccCleanupApplicationByName(name)
+		},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckApplicationDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccApplicationConfig(testAppConfig{
+					resourceName: "ds_saml_app",
+					name:         name,
+					appType:      "saas",
+					description:  "DS SAML SSO acceptance test",
+					url:          fmt.Sprintf("https://%s", fqdn),
+					relatedURLs:  []string{fmt.Sprintf("*.%s", fqdn)},
+					sso: `{
+						type              = "saml"
+						assertion_url     = "https://sp.example.com/acs"
+						audience          = "https://sp.example.com"
+						name_id_format    = "emailAddress"
+						name_id_source    = "email"
+						custom_attributes = []
+					}`,
+				}) + fmt.Sprintf(`
+data "spa_application" "saml_by_name" {
+  name       = %q
+  depends_on = [spa_application.ds_saml_app]
+}
+`, name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckApplicationExistsInAPI("spa_application.ds_saml_app"),
+					resource.TestCheckResourceAttrSet("data.spa_application.saml_by_name", "id"),
+					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "name", name),
+					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "type", "saas"),
+					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "sso.type", "saml"),
+					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "sso.assertion_url", "https://sp.example.com/acs"),
+					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "sso.audience", "https://sp.example.com"),
+					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "sso.name_id_format", "emailAddress"),
+					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "sso.name_id_source", "email"),
+					// Data source shows ALL fields including server-computed ones
+					resource.TestCheckResourceAttrSet("data.spa_application.saml_by_name", "sso.saml_sso_login_url"),
+					// customer is a server-computed metadata field
+					resource.TestCheckResourceAttrSet("data.spa_application.saml_by_name", "sso.customer"),
+					resource.TestCheckResourceAttrSet("data.spa_application.saml_by_name", "state"),
+					resource.TestCheckResourceAttrPair(
+						"data.spa_application.saml_by_name", "id",
+						"spa_application.ds_saml_app", "id",
+					),
+				),
 			},
 		},
 	})

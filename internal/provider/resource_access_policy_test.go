@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -194,6 +195,45 @@ func TestAccessPolicyUpdatePayloadGeneration(t *testing.T) {
 // =============================================================================
 // CheckDestroy functions — verify resources are deleted from backend after destroy
 // =============================================================================
+
+// TestAccessPolicyPriorityZeroSerialization verifies that priority=0 is included
+// in the JSON payload and not silently dropped by omitempty.
+func TestAccessPolicyPriorityZeroSerialization(t *testing.T) {
+	policy := AccessPolicy{
+		Name:     "test-priority-zero",
+		Active:   true,
+		Priority: 0,
+	}
+	data, err := json.Marshal(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonStr := string(data)
+	if !strings.Contains(jsonStr, `"priority":0`) {
+		t.Errorf("Priority 0 missing from AccessPolicy JSON: %s", jsonStr)
+	}
+
+	rule := AccessRule{
+		Name:     "rule-priority-zero",
+		Active:   true,
+		Priority: 0,
+	}
+	data, err = json.Marshal(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonStr = string(data)
+	if !strings.Contains(jsonStr, `"priority":0`) {
+		t.Errorf("Priority 0 missing from AccessRule JSON: %s", jsonStr)
+	}
+
+	// Also verify non-zero priority still works
+	policy.Priority = 5
+	data, _ = json.Marshal(policy)
+	if !strings.Contains(string(data), `"priority":5`) {
+		t.Errorf("Priority 5 missing from AccessPolicy JSON: %s", string(data))
+	}
+}
 
 func testAccCheckAccessPolicyDestroy(s *terraform.State) error {
 	client, err := testAccCreateClient()

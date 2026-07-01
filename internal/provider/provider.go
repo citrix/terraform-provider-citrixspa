@@ -33,15 +33,16 @@ type SPAProvider struct {
 
 // SPAProviderModel describes the provider data model.
 type SPAProviderModel struct {
-	BaseURL            types.String `tfsdk:"base_url"`
-	TokenURL           types.String `tfsdk:"token_url"`
-	CustomerID         types.String `tfsdk:"customer_id"`
-	AuthToken          types.String `tfsdk:"auth_token"`
-	ClientID           types.String `tfsdk:"client_id"`
-	ClientSecret       types.String `tfsdk:"client_secret"`
-	RateLimit          types.Int64  `tfsdk:"rate_limit"` // Rate limit in requests per second
-	FetchDetailsOnList types.Bool   `tfsdk:"fetch_details_on_list"`
-	EnableTokenCache   types.Bool   `tfsdk:"enable_token_cache"`
+	BaseURL                  types.String `tfsdk:"base_url"`
+	TokenURL                 types.String `tfsdk:"token_url"`
+	CustomerID               types.String `tfsdk:"customer_id"`
+	AuthToken                types.String `tfsdk:"auth_token"`
+	ClientID                 types.String `tfsdk:"client_id"`
+	ClientSecret             types.String `tfsdk:"client_secret"`
+	RateLimit                types.Int64  `tfsdk:"rate_limit"` // Rate limit in requests per second
+	FetchDetailsOnList       types.Bool   `tfsdk:"fetch_details_on_list"`
+	EnableTokenCache         types.Bool   `tfsdk:"enable_token_cache"`
+	SuppressASBNotifications types.Bool   `tfsdk:"suppress_asb_notifications"`
 }
 
 func (p *SPAProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -88,12 +89,18 @@ func (p *SPAProvider) Schema(ctx context.Context, req provider.SchemaRequest, re
 			},
 			"fetch_details_on_list": schema.BoolAttribute{
 				MarkdownDescription: "When true, automatically fetch detailed information for each resource during list operations. " +
-					"This makes additional API calls but reuses cached tokens to avoid rate limiting. Useful for tools like spa_manager.py that need complete resource details.",
+					"This makes additional API calls but reuses cached tokens to avoid rate limiting. Useful for tools like spa_manager.ps1 that need complete resource details.",
 				Optional: true,
 			},
 			"enable_token_cache": schema.BoolAttribute{
 				MarkdownDescription: "Enable encrypted disk-based token caching to reuse authentication tokens across terraform operations. " +
 					"Tokens are encrypted using AES-256-GCM and stored in ~/.terraform.d/spa-cache/. Default: true.",
+				Optional: true,
+			},
+			"suppress_asb_notifications": schema.BoolAttribute{
+				MarkdownDescription: "When true, suppress ASB notifications during API operations. " +
+					"Recommended when applying 10 or more resource changes to avoid intermittent errors. " +
+					"Note: when enabled, synchronization of changes may be delayed. Default: false.",
 				Optional: true,
 			},
 		},
@@ -238,20 +245,28 @@ func (p *SPAProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		fetchDetailsOnList = data.FetchDetailsOnList.ValueBool()
 	}
 
+	suppressASBNotifications := false // Default to disabled
+	if !data.SuppressASBNotifications.IsNull() {
+		suppressASBNotifications = data.SuppressASBNotifications.ValueBool()
+	}
+
 	tflog.Debug(ctx, "spa-terraform-provider: Provider configuration", map[string]any{
-		"enable_token_cache":    enableTokenCache,
-		"fetch_details_on_list": fetchDetailsOnList,
+		"enable_token_cache":         enableTokenCache,
+		"fetch_details_on_list":      fetchDetailsOnList,
+		"suppress_asb_notifications": suppressASBNotifications,
 	})
 
 	// Create the appropriate client based on authentication method
 	var client SPAClient
+
+	userAgent := fmt.Sprintf("terraform-provider-citrix-spa/%s", p.version)
 
 	var tp TokenProvider
 	if !hasDirectAuth {
 		// Use service principal authentication
 		tp = NewAuthenticatedClient(tokenURL, customerID, clientID, clientSecret, enableTokenCache)
 	}
-	client = NewAPIClient(baseURL, customerID, authToken, p.limiter, fetchDetailsOnList, tp)
+	client = NewAPIClient(baseURL, customerID, authToken, p.limiter, fetchDetailsOnList, suppressASBNotifications, tp, userAgent)
 
 	resp.DataSourceData = client
 	resp.ResourceData = client
@@ -268,6 +283,7 @@ func (p *SPAProvider) Resources(ctx context.Context) []func() resource.Resource 
 		NewBrowserModeResource,
 		NewTerminateMachineAccessResource,
 		NewTerminateUserAccessResource,
+		NewSessionPolicyResource,
 	}
 }
 
@@ -288,6 +304,8 @@ func (p *SPAProvider) DataSources(ctx context.Context) []func() datasource.DataS
 		NewTerminateMachineAccessDataSource,
 		NewTerminateUserAccessDataSource,
 		NewCertificatesDataSource,
+		NewSessionPolicyDataSource,
+		NewSessionPoliciesDataSource,
 	}
 }
 

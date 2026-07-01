@@ -134,17 +134,24 @@ resource "spa_routing_domain" "%s" {
 }
 
 func TestAccRoutingDomain_internal(t *testing.T) {
+	fqdnOriginal := "tf-acc-test-internal.example.com"
+	fqdnRenamed := "tf-acc-test-internal-renamed.example.com"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t); testAccCleanupRoutingDomain("tf-acc-test-internal.example.com") },
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccCleanupRoutingDomain(fqdnOriginal)
+			testAccCleanupRoutingDomain(fqdnRenamed)
+		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckRoutingDomainDestroy,
 		Steps: []resource.TestStep{
+			// Step 1: Create the routing domain
 			{
-				Config: testAccRoutingDomainConfig("test_internal", "tf-acc-test-internal.example.com", "internal", "web", "Terraform acceptance test - internal", "enabled", "false", "[]"),
+				Config: testAccRoutingDomainConfig("test_internal", fqdnOriginal, "internal", "web", "Terraform acceptance test - internal", "enabled", "false", "[]"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.test_internal"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "fqdn", "tf-acc-test-internal.example.com"),
+					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "fqdn", fqdnOriginal),
 					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "type", "internal"),
 					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "app_type", "web"),
 					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "comment", "Terraform acceptance test - internal"),
@@ -153,14 +160,29 @@ func TestAccRoutingDomain_internal(t *testing.T) {
 					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "location_ids.#", "0"),
 				),
 			},
+			// Step 2: Update comment and flag (same FQDN)
 			{
-				Config: testAccRoutingDomainConfig("test_internal", "tf-acc-test-internal.example.com", "internal", "web", "Terraform acceptance test - internal UPDATED", "disabled", "false", "[]"),
+				Config: testAccRoutingDomainConfig("test_internal", fqdnOriginal, "internal", "web", "Terraform acceptance test - internal UPDATED", "disabled", "false", "[]"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.test_internal"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "fqdn", "tf-acc-test-internal.example.com"),
+					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "fqdn", fqdnOriginal),
 					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "type", "internal"),
 					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "app_type", "web"),
 					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "comment", "Terraform acceptance test - internal UPDATED"),
+					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "flag", "disabled"),
+					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "ip", "false"),
+					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "location_ids.#", "0"),
+				),
+			},
+			// Step 3: Change the FQDN — exercises the oldFQDN-from-state path in Update
+			{
+				Config: testAccRoutingDomainConfig("test_internal", fqdnRenamed, "internal", "web", "Terraform acceptance test - internal RENAMED", "disabled", "false", "[]"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.test_internal"),
+					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "fqdn", fqdnRenamed),
+					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "type", "internal"),
+					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "app_type", "web"),
+					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "comment", "Terraform acceptance test - internal RENAMED"),
 					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "flag", "disabled"),
 					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "ip", "false"),
 					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "location_ids.#", "0"),
@@ -170,7 +192,7 @@ func TestAccRoutingDomain_internal(t *testing.T) {
 				ResourceName:                         "spa_routing_domain.test_internal",
 				ImportState:                          true,
 				ImportStateVerify:                    true,
-				ImportStateId:                        "tf-acc-test-internal.example.com",
+				ImportStateId:                        fqdnRenamed,
 				ImportStateVerifyIdentifierAttribute: "fqdn",
 			},
 			// Delete testing automatically occurs in TestCase

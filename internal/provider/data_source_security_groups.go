@@ -28,7 +28,6 @@ type SecurityGroupsDataSourceModel struct {
 	SecurityGroups []SecurityGroupDataSourceModel `tfsdk:"security_groups"`
 	Offset         types.Int64                    `tfsdk:"offset"`
 	Limit          types.Int64                    `tfsdk:"limit"`
-	Filter         types.String                   `tfsdk:"filter"`
 }
 
 func (d *SecurityGroupsDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -47,10 +46,6 @@ func (d *SecurityGroupsDataSource) Schema(ctx context.Context, req datasource.Sc
 			},
 			"limit": schema.Int64Attribute{
 				MarkdownDescription: "Limit for pagination",
-				Optional:            true,
-			},
-			"filter": schema.StringAttribute{
-				MarkdownDescription: "Filter security groups by name (optional)",
 				Optional:            true,
 			},
 			"security_groups": schema.ListNestedAttribute{
@@ -150,21 +145,14 @@ func (d *SecurityGroupsDataSource) Read(ctx context.Context, req datasource.Read
 		limit = int(data.Limit.ValueInt64())
 	}
 
-	// Get filter if provided
-	filter := ""
-	if !data.Filter.IsNull() {
-		filter = data.Filter.ValueString()
-	}
-
 	// Log the data source read operation
 	tflog.Debug(ctx, "spa-terraform-provider: Reading security groups data source", map[string]any{
 		"offset": offset,
 		"limit":  limit,
-		"filter": filter,
 	})
 
 	// Get security groups from API
-	securityGroups, err := d.client.GetSecurityGroups(ctx, offset, limit, filter)
+	securityGroups, err := d.client.GetSecurityGroups(ctx, offset, limit)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read security groups, got error: %s", err))
 		return
@@ -210,9 +198,6 @@ func (d *SecurityGroupsDataSource) Read(ctx context.Context, req datasource.Read
 	data.Offset = types.Int64Value(int64(offset))
 	if limit > 0 {
 		data.Limit = types.Int64Value(int64(limit))
-	}
-	if filter != "" {
-		data.Filter = types.StringValue(filter)
 	}
 
 	// Save data into Terraform state

@@ -243,6 +243,14 @@ func (r *RoutingDomainResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
+	// Get the old FQDN from state to use in the API path (FQDN is the resource identifier)
+	var stateData RoutingDomainResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	oldFQDN := stateData.FQDN.ValueString()
+
 	// Convert Terraform model to API model
 	rd := &RoutingDomain{
 		FQDN:        data.FQDN.ValueString(),
@@ -268,14 +276,14 @@ func (r *RoutingDomainResource) Update(ctx context.Context, req resource.UpdateR
 		rd.LocationIds = locationIds
 	}
 
-	// Update the routing domain
-	err := r.client.UpdateRoutingDomain(ctx, data.FQDN.ValueString(), rd)
+	// Update the routing domain using the old FQDN for the API paths
+	err := r.client.UpdateRoutingDomain(ctx, oldFQDN, rd)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update routing domain, got error: %s", err))
 		return
 	}
 
-	// Re-read the routing domain to get the updated error field
+	// Re-read the routing domain using the new FQDN
 	updatedRD, err := r.client.GetRoutingDomain(ctx, data.FQDN.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read routing domain after update, got error: %s", err))

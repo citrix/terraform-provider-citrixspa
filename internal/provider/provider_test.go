@@ -58,6 +58,6 @@ func testAccCreateClient() (*APIClient, error) {
 		tp = NewAuthenticatedClient(tokenURL, customerID, clientID, clientSecret, false)
 	}
 
-	client := NewAPIClient(baseURL, customerID, authToken, nil, false, tp)
+	client := NewAPIClient(baseURL, customerID, authToken, nil, false, false, tp, "terraform-provider-spa/test")
 	return client, nil
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/big"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -47,9 +46,10 @@ type ApplicationDataSourceModel struct {
 	Destination          types.List   `tfsdk:"destination"`
 	CustomProperties     types.Map    `tfsdk:"custom_properties"`
 	CustomerDomainFields types.Map    `tfsdk:"customer_domain_fields"`
-	SSO                  SSOValue     `tfsdk:"sso"`
+	SSO                  types.Object `tfsdk:"sso"`
 	State                types.String `tfsdk:"state"`
 	PolicyCount          types.String `tfsdk:"policy_count"`
+	CreatedTime          types.String `tfsdk:"created_time"`
 }
 
 var ApplicationAttributes = map[string]schema.Attribute{
@@ -206,11 +206,42 @@ var ApplicationAttributes = map[string]schema.Attribute{
 		Computed:            true,
 		ElementType:         types.StringType,
 	},
-	"sso": schema.DynamicAttribute{
-		MarkdownDescription: "SSO configuration - a map where values can be either strings or arrays of objects (each object is a map of string to string)",
-		Optional:            true,
+	"sso": schema.SingleNestedAttribute{
+		MarkdownDescription: "SSO configuration",
 		Computed:            true,
-		CustomType:          SSOType{},
+		Attributes: map[string]schema.Attribute{
+			"type":              schema.StringAttribute{Computed: true, MarkdownDescription: "SSO type"},
+			"saml_type":         schema.StringAttribute{Computed: true, MarkdownDescription: "SAML role"},
+			"sp_initiated_only": schema.BoolAttribute{Computed: true, MarkdownDescription: "SP-initiated only"},
+			"assertion_url":     schema.StringAttribute{Computed: true, MarkdownDescription: "SAML ACS URL"},
+			"audience":          schema.StringAttribute{Computed: true, MarkdownDescription: "SAML audience"},
+			"relay_state":       schema.StringAttribute{Computed: true, MarkdownDescription: "SAML relay state"},
+			"sign_assertion":    schema.StringAttribute{Computed: true, MarkdownDescription: "SAML signature scope"},
+			"name_id_source":    schema.StringAttribute{Computed: true, MarkdownDescription: "SAML NameID source"},
+			"name_id_format":    schema.StringAttribute{Computed: true, MarkdownDescription: "SAML NameID format"},
+			"custom_attributes": schema.ListNestedAttribute{
+				Computed:            true,
+				MarkdownDescription: "SAML custom attributes",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"format":      schema.StringAttribute{Computed: true},
+						"name":        schema.StringAttribute{Computed: true},
+						"value":       schema.StringAttribute{Computed: true},
+						"prefix_expr": schema.BoolAttribute{Computed: true},
+					},
+				},
+			},
+			"saml_sso_login_url":    schema.StringAttribute{Computed: true, MarkdownDescription: "SAML SSO login URL (server-computed)"},
+			"saml_cert_issuer_name": schema.StringAttribute{Computed: true, MarkdownDescription: "SAML cert issuer name (server-computed)"},
+			"customer":              schema.StringAttribute{Computed: true, MarkdownDescription: "Customer ID (server-computed)"},
+			"action_url":            schema.StringAttribute{Computed: true, MarkdownDescription: "Form SSO action URL"},
+			"logonform_url":         schema.StringAttribute{Computed: true, MarkdownDescription: "Form SSO logon form URL"},
+			"username_field":        schema.StringAttribute{Computed: true, MarkdownDescription: "Form SSO username field"},
+			"password_field":        schema.StringAttribute{Computed: true, MarkdownDescription: "Form SSO password field"},
+			"attribute":             schema.StringAttribute{Computed: true, MarkdownDescription: "Form SSO attribute"},
+			"username_format":       schema.StringAttribute{Computed: true, MarkdownDescription: "Username format"},
+			"user_realm":            schema.StringAttribute{Computed: true, MarkdownDescription: "Kerberos user realm"},
+		},
 	},
 	"state": schema.StringAttribute{
 		MarkdownDescription: "Application state",
@@ -220,6 +251,10 @@ var ApplicationAttributes = map[string]schema.Attribute{
 	"policy_count": schema.StringAttribute{
 		MarkdownDescription: "Policy count",
 		Optional:            true,
+		Computed:            true,
+	},
+	"created_time": schema.StringAttribute{
+		MarkdownDescription: "Time the application was created (ISO 8601, e.g. 2026-04-08T14:37:24Z)",
 		Computed:            true,
 	},
 }
@@ -394,6 +429,10 @@ var ApplicationListAttributes = map[string]schema.Attribute{
 		Optional:            true,
 		Computed:            true,
 	},
+	"created_time": schema.StringAttribute{
+		MarkdownDescription: "Time the application was created (ISO 8601, e.g. 2026-04-08T14:37:24Z)",
+		Computed:            true,
+	},
 }
 
 func (d *ApplicationDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -477,6 +516,11 @@ func (d *ApplicationDataSource) Read(ctx context.Context, req datasource.ReadReq
 	data.Type = types.StringValue(app.Type)
 	data.State = types.StringValue(app.State)
 	data.PolicyCount = types.StringValue(app.PolicyCount)
+	if app.CreatedTime != "" {
+		data.CreatedTime = types.StringValue(app.CreatedTime)
+	} else {
+		data.CreatedTime = types.StringNull()
+	}
 
 	// Handle boolean fields
 	data.Hidden = types.BoolValue(app.Hidden)
@@ -624,81 +668,19 @@ func (d *ApplicationDataSource) Read(ctx context.Context, req datasource.ReadReq
 
 	// Handle SSO map
 	if len(app.SSO) > 0 {
-		elements := make(map[string]attr.Value)
-		elementTypes := make(map[string]attr.Type)
-
-		for key, value := range app.SSO {
-			// Skip the "customer" field - it's a backend-added field that shouldn't be in state
-			if key == "customer" {
-				continue
-			}
-			
-			// Skip null values - they should not appear in the Terraform configuration
-			if value == nil {
-				continue
-			}
-
-			// Convert each value to appropriate Terraform types
-			switch v := value.(type) {
-			case string:
-				elements[key] = types.StringValue(v)
-				elementTypes[key] = types.StringType
-			case bool:
-				elements[key] = types.BoolValue(v)
-				elementTypes[key] = types.BoolType
-			case int:
-				elements[key] = types.Int64Value(int64(v))
-				elementTypes[key] = types.Int64Type
-			case int64:
-				elements[key] = types.Int64Value(v)
-				elementTypes[key] = types.Int64Type
-			case float64:
-				elements[key] = types.NumberValue(big.NewFloat(v))
-				elementTypes[key] = types.NumberType
-			case []interface{}:
-				// Handle arrays by converting them to tuple of objects
-				// Using Tuple instead of List to match HCL's parsing behavior for heterogeneous collections
-				tupleElements := make([]attr.Value, len(v))
-				tupleTypes := make([]attr.Type, len(v))
-				for i, elem := range v {
-					if objMap, ok := elem.(map[string]interface{}); ok {
-						// Convert map[string]interface{} to object type
-						objElements := make(map[string]attr.Value)
-						objElementTypes := make(map[string]attr.Type)
-						for objKey, objVal := range objMap {
-							objElements[objKey] = types.StringValue(fmt.Sprintf("%v", objVal))
-							objElementTypes[objKey] = types.StringType
-						}
-						objValue, _ := types.ObjectValue(objElementTypes, objElements)
-						tupleElements[i] = objValue
-						tupleTypes[i] = objValue.Type(ctx)
-					} else {
-						// Fall back to string representation
-						tupleElements[i] = types.StringValue(fmt.Sprintf("%v", elem))
-						tupleTypes[i] = types.StringType
-					}
-				}
-				// Create a tuple that can hold objects with different schemas
-				// This matches how Terraform parses array literals in HCL
-				tupleValue, _ := types.TupleValue(tupleTypes, tupleElements)
-				elements[key] = tupleValue
-				elementTypes[key] = tupleValue.Type(ctx)
-			default:
-				// For any other type, convert to string but skip if it's a string representation of null
-				strValue := fmt.Sprintf("%v", v)
-				if strValue == "<nil>" || strValue == "null" || strValue == "None" {
-					continue // Skip null-like values
-				}
-				elements[key] = types.StringValue(strValue)
-				elementTypes[key] = types.StringType
-			}
+		ssoModel, ssoDiags := ssoFromAPI(ctx, app.SSO)
+		resp.Diagnostics.Append(ssoDiags...)
+		if resp.Diagnostics.HasError() {
+			return
 		}
-
-		// Create an object from the elements and wrap it in a custom SSO value
-		objectValue, _ := types.ObjectValue(elementTypes, elements)
-		data.SSO = SSOTypeValue(types.DynamicValue(objectValue))
+		ssoObj, objDiags := ssoModelToObject(ctx, ssoModel)
+		resp.Diagnostics.Append(objDiags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		data.SSO = ssoObj
 	} else {
-		data.SSO = SSOTypeNull()
+		data.SSO = types.ObjectNull(ssoAttrTypes)
 	}
 
 	// Handle CustomProperties map

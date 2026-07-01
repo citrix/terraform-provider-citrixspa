@@ -24,7 +24,7 @@ provider "spa" {
 variable "base_url" {
   description = "SPA API Base URL"
   type        = string
-  default     = "https://api.cloud.com"
+  default     = "https://api.cloud.com/accessSecurity"
 }
 
 variable "citrix_customer_id" {
@@ -55,23 +55,28 @@ variable "citrix_client_secret" {
 }
 
 # Example: Data source to test connectivity
+# GET the first 2 applications to verify the provider can connect and authenticate successfully
 data "spa_applications" "test_apps" {
   offset = 0
-  limit  = 10
+  limit  = 2
+}
+
+output "apps" {
+  value = data.spa_applications.test_apps
 }
 
 # Example: Create a simple resource for testing
-resource "spa_application" "test_app" {
-  name = "Test Application - Local Provider"
-  type = "web"
-  # Add other required attributes based on your resource schema
-}
+# resource "spa_application" "test_app" {
+#   name = "Test Application - Local Provider"
+#   type = "web"
+#   # Add other required attributes based on your resource schema
+# }
 
-# Output to verify the test
-output "test_app_id" {
-  value = spa_application.test_app.id
-}
+# # Output to verify the test
+# output "test_app_id" {
+#   value = spa_application.test_app.id
+# }
 
-output "provider_test_status" {
-  value = "Local provider successfully loaded and configured"
-}
+# output "provider_test_status" {
+#   value = "Local provider successfully loaded and configured"
+# }
