@@ -99,11 +99,11 @@ cleanup() {
 
 full_cleanup() {
     print_status "Removing all artifacts created by this script..."
-    rm -f terraform-provider-spa
+    rm -f terraform-provider-citrixspa
     rm -f .terraformrc
     rm -rf test-local/.terraform test-local/.terraform.lock.hcl test-local/tfplan test-local/terraform.tfstate test-local/terraform.tfstate.backup
     rm -rf test-local-sp/.terraform test-local-sp/.terraform.lock.hcl test-local-sp/tfplan test-local-sp/terraform.tfstate test-local-sp/terraform.tfstate.backup
-    rm -rf ~/.terraform.d/plugins/registry.terraform.io/citrix/spa/
+    rm -rf ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/
     print_status "Cleanup complete. All test artifacts removed."
 }
 

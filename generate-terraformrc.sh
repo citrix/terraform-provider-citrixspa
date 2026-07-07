@@ -18,19 +18,19 @@ cat > .terraformrc << EOF
 
 provider_installation {
   # Use ${TERRAFORM_PLUGIN_DIR} as an overridden package directory
-  # for the citrix/spa provider. This disables the version and checksum
+  # for the citrix/citrixspa provider. This disables the version and checksum
   # verifications for this provider and forces Terraform to look for the
-  # citrix/spa provider in the given directory.
+  # citrix/citrixspa provider in the given directory.
   filesystem_mirror {
     path    = "${TERRAFORM_PLUGIN_DIR}"
-    include = ["registry.terraform.io/citrix/spa"]
+    include = ["registry.terraform.io/citrix/citrixspa"]
   }
 
   # For all other providers, install them directly from their origin provider
   # registries as normal. If you omit this, Terraform will _only_ use
   # the dev_overrides block, and so no other providers will be available.
   direct {
-    exclude = ["registry.terraform.io/citrix/spa"]
+    exclude = ["registry.terraform.io/citrix/citrixspa"]
   }
 }
 EOF

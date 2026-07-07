@@ -83,7 +83,7 @@ generate_discovery_config() {
 terraform {
   required_providers {
     spa = {
-      source = "citrix/spa"
+      source = "citrix/citrixspa"
     }
   }
 }
@@ -199,7 +199,7 @@ generate_main_config() {
 terraform {
   required_providers {
     spa = {
-      source = "citrix/spa"
+      source = "citrix/citrixspa"
     }
   }
 }

@@ -259,7 +259,7 @@ func (p *SPAProvider) Configure(ctx context.Context, req provider.ConfigureReque
 	// Create the appropriate client based on authentication method
 	var client SPAClient
 
-	userAgent := fmt.Sprintf("terraform-provider-citrix-spa/%s", p.version)
+	userAgent := fmt.Sprintf("terraform-provider-citrixspa/%s", p.version)
 
 	var tp TokenProvider
 	if !hasDirectAuth {

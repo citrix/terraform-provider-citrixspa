@@ -29,12 +29,12 @@ builds:
     ignore:
       - goos: darwin
         goarch: '386'
-    binary: 'terraform-provider-spa_v{{ .Version }}'
+    binary: 'terraform-provider-citrixspa_v{{ .Version }}'
 archives:
   - format: zip
-    name_template: 'terraform-provider-spa_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    name_template: 'terraform-provider-citrixspa_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 checksum:
-  name_template: 'terraform-provider-spa_{{ .Version }}_SHA256SUMS'
+  name_template: 'terraform-provider-citrixspa_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
 signs:
   - artifacts: checksum

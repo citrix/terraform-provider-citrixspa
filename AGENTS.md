@@ -9,8 +9,8 @@ Contributor reference for the Citrix Secure Private Access Terraform provider.
 | Name | Citrix SPA Terraform Provider |
 | Language | Go 1.24 (toolchain 1.24.6) |
 | Framework | Terraform Plugin Framework v1.16.1 |
-| Binary | `terraform-provider-spa` |
-| Registry | `registry.terraform.io/citrix/spa` |
+| Binary | `terraform-provider-citrixspa` |
+| Registry | `registry.terraform.io/citrix/citrixspa` |
 | API Base | `https://api.cloud.com/accessSecurity` |
 | Rate limiting | `golang.org/x/time/rate` |
 | Encryption | `golang.org/x/crypto` (AES-256-GCM + PBKDF2) |
@@ -20,8 +20,8 @@ Contributor reference for the Citrix Secure Private Access Terraform provider.
 ## Build & Test
 
 ```bash
-make build       # Produces ./terraform-provider-spa
-make install     # Installs to ~/.terraform.d/plugins/registry.terraform.io/citrix/spa/0.1.0/<os>_<arch>/
+make build       # Produces ./terraform-provider-citrixspa
+make install     # Installs to ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/0.1.0/<os>_<arch>/
 make test        # Unit tests
 make testacc     # Acceptance tests
 make fmt         # go fmt + terraform fmt

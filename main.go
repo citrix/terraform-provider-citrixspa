@@ -22,7 +22,7 @@ var (
 
 func main() {
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/citrix/spa",
+		Address: "registry.terraform.io/citrix/citrixspa",
 	}
 
 	err := providerserver.Serve(context.Background(), provider.New(version), opts)

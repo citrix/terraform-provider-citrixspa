@@ -26,7 +26,7 @@ Terraform provider for managing Citrix Secure Private Access (SPA) resources thr
 terraform {
   required_providers {
     spa = {
-      source = "citrix/spa"
+      source = "citrix/citrixspa"
     }
   }
 }
@@ -35,8 +35,8 @@ terraform {
 ### Building from Source
 
 ```bash
-git clone https://github.com/citrix/terraform-provider-spa.git
-cd terraform-provider-spa
+git clone https://github.com/citrix/terraform-provider-citrixspa.git
+cd terraform-provider-citrixspa
 make build
 ```
 
@@ -224,7 +224,7 @@ cp test-local-sp/terraform.tfvars.example test-local-sp/terraform.tfvars
 The script performs these steps automatically:
 
 1. `make build` — compiles the provider binary
-2. `make install` — copies the binary to `~/.terraform.d/plugins/registry.terraform.io/citrix/spa/0.1.0/<os>_<arch>/`
+2. `make install` — copies the binary to `~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/0.1.0/<os>_<arch>/`
 3. `./generate-terraformrc.sh` — creates a `.terraformrc` file that tells Terraform to use the local binary instead of downloading from the registry
 4. `terraform init -reconfigure` — initializes Terraform with the local provider
 5. `terraform validate` — validates the configuration
@@ -242,13 +242,13 @@ This removes:
 
 | Artifact | Location |
 |----------|----------|
-| Built binary | `terraform-provider-spa` |
+| Built binary | `terraform-provider-citrixspa` |
 | Generated Terraform CLI config | `.terraformrc` |
 | Terraform cache and lock file | `test-local/.terraform/`, `test-local/.terraform.lock.hcl` |
 | Terraform cache and lock file | `test-local-sp/.terraform/`, `test-local-sp/.terraform.lock.hcl` |
 | Plan files | `test-local/tfplan`, `test-local-sp/tfplan` |
 | State files | `test-local/terraform.tfstate*`, `test-local-sp/terraform.tfstate*` |
-| Installed plugin | `~/.terraform.d/plugins/registry.terraform.io/citrix/spa/` |
+| Installed plugin | `~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/` |
 
 > **Note**: `terraform.tfvars` files in `test-local/` and `test-local-sp/` are **not** removed — your credentials are preserved.
 
@@ -293,7 +293,7 @@ TF_LOG=DEBUG TF_LOG_PATH="debug.log" TF_CLI_CONFIG_FILE=../.terraformrc terrafor
 ## Project Structure
 
 ```
-terraform-provider-spa/
+terraform-provider-citrixspa/
 ├── main.go                          # Provider entry point
 ├── Makefile                         # Build targets
 ├── generate-terraformrc.sh          # Generates .terraformrc for local dev
@@ -330,5 +330,5 @@ terraform-provider-spa/
 
 ## Support
 
-- GitHub Issues: [https://github.com/citrix/terraform-provider-spa/issues](https://github.com/citrix/terraform-provider-spa/issues)
+- GitHub Issues: [https://github.com/citrix/terraform-provider-citrixspa/issues](https://github.com/citrix/terraform-provider-citrixspa/issues)
 - Citrix Developer Documentation: [https://developer.citrix.com](https://developer.citrix.com)

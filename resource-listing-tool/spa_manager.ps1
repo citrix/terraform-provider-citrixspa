@@ -131,7 +131,7 @@ $script:TERRAFORM_PROVIDER_CONFIG = @'
 terraform {{
   required_providers {{
     spa = {{
-      source  = "registry.terraform.io/citrix/spa"
+      source  = "registry.terraform.io/citrix/citrixspa"
       version = "0.8.1"
     }}
   }}

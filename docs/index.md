@@ -68,7 +68,7 @@ export CITRIX_AUTH_TOKEN="your-auth-token"
 terraform {
   required_providers {
     spa = {
-      source = "citrix/spa"
+      source = "citrix/citrixspa"
     }
   }
 }
@@ -102,13 +102,13 @@ The primary use case for this provider is migrating an SPA configuration from on
 ### Step 0 — Prerequisites
 
 - Install [Terraform](https://developer.hashicorp.com/terraform/downloads) on your machine.
-- If the `citrix/spa` provider is not available in the public registry for your architecture, download the provider binary zip for your platform and extract it into the Terraform plugin directory:
+- If the `citrix/citrixspa` provider is not available in the public registry for your architecture, download the provider binary zip for your platform and extract it into the Terraform plugin directory:
 
   ```powershell
   # Example for Windows AMD64 — adjust the path and version as needed
   $pluginDir = "$env:APPDATA\terraform.d\plugins\registry.terraform.io\citrix\spa\<version>\windows_amd64"
   New-Item -Path $pluginDir -ItemType Directory -Force
-  Expand-Archive "terraform-provider-spa_<version>_windows_amd64.zip" -DestinationPath $pluginDir -Force
+  Expand-Archive "terraform-provider-citrixspa_<version>_windows_amd64.zip" -DestinationPath $pluginDir -Force
   ```
 
   Then create (or update) `C:\Users\<you>\.terraformrc` so Terraform uses the local copy:
@@ -117,10 +117,10 @@ The primary use case for this provider is migrating an SPA configuration from on
   provider_installation {
     filesystem_mirror {
       path    = "C:/Users/<you>/AppData/Roaming/terraform.d/plugins"
-      include = ["citrix/spa"]
+      include = ["citrix/citrixspa"]
     }
     direct {
-      exclude = ["citrix/spa"]
+      exclude = ["citrix/citrixspa"]
     }
   }
   ```

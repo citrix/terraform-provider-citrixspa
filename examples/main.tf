@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     spa = {
-      source = "citrix/spa"
+      source = "citrix/citrixspa"
     }
   }
 }

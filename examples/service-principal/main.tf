@@ -2,7 +2,7 @@ terraform {
   required_version = ">= 0.13"
   required_providers {
     spa = {
-      source  = "citrix/spa"
+      source  = "citrix/citrixspa"
       version = "~> 0.1.0"
     }
   }
