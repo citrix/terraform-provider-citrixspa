@@ -19,14 +19,14 @@ func testAccSecurityGroupsDataSourceConfig(appName, sgName string) string {
 		testAccSecurityGroupConfig(testSecurityGroupConfig{
 			resourceName:   "sgs_sg",
 			name:           sgName,
-			appRefs:        []string{"spa_application.sgs_app.id"},
+			appRefs:        []string{"citrixspa_application.sgs_app.id"},
 			systemIn:       "enabled",
 			systemOut:      "enabled",
 			unpublishedIn:  "disabled",
 			unpublishedOut: "disabled",
 		}) + `
-data "spa_security_groups" "all" {
-  depends_on = [spa_security_group.sgs_sg]
+data "citrixspa_security_groups" "all" {
+  depends_on = [citrixspa_security_group.sgs_sg]
 }
 `
 }
@@ -115,8 +115,8 @@ func TestAccSecurityGroupsDataSource_basic(t *testing.T) {
 			{
 				Config: testAccSecurityGroupsDataSourceConfig(appName, sgName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSecurityGroupExistsInAPI("spa_security_group.sgs_sg"),
-					testAccCheckSecurityGroupsListNonEmpty("data.spa_security_groups.all"),
+					testAccCheckSecurityGroupExistsInAPI("citrixspa_security_group.sgs_sg"),
+					testAccCheckSecurityGroupsListNonEmpty("data.citrixspa_security_groups.all"),
 				),
 			},
 		},
@@ -143,8 +143,8 @@ func TestAccSecurityGroupsDataSource_containsCreated(t *testing.T) {
 			{
 				Config: testAccSecurityGroupsDataSourceConfig(appName, sgName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSecurityGroupExistsInAPI("spa_security_group.sgs_sg"),
-					testAccCheckSecurityGroupsContainsName("data.spa_security_groups.all", sgName),
+					testAccCheckSecurityGroupExistsInAPI("citrixspa_security_group.sgs_sg"),
+					testAccCheckSecurityGroupsContainsName("data.citrixspa_security_groups.all", sgName),
 				),
 			},
 		},

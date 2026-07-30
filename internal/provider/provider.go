@@ -39,7 +39,8 @@ type SPAProviderModel struct {
 	AuthToken                types.String `tfsdk:"auth_token"`
 	ClientID                 types.String `tfsdk:"client_id"`
 	ClientSecret             types.String `tfsdk:"client_secret"`
-	RateLimit                types.Int64  `tfsdk:"rate_limit"` // Rate limit in requests per second
+	RateLimit                types.Int64  `tfsdk:"rate_limit"`     // Rate limit in requests per second
+	MaxConcurrent            types.Int64  `tfsdk:"max_concurrent"` // Max concurrent mutating API requests: POST/PUT/DELETE (semaphore)
 	FetchDetailsOnList       types.Bool   `tfsdk:"fetch_details_on_list"`
 	EnableTokenCache         types.Bool   `tfsdk:"enable_token_cache"`
 	SuppressASBNotifications types.Bool   `tfsdk:"suppress_asb_notifications"`
@@ -47,7 +48,7 @@ type SPAProviderModel struct {
 
 func (p *SPAProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	tflog.Debug(ctx, "spa-terraform-provider: Metadata - Setting provider metadata")
-	resp.TypeName = "spa"
+	resp.TypeName = "citrixspa"
 	resp.Version = p.version
 }
 
@@ -101,6 +102,13 @@ func (p *SPAProvider) Schema(ctx context.Context, req provider.SchemaRequest, re
 				MarkdownDescription: "When true, suppress ASB notifications during API operations. " +
 					"Recommended when applying 10 or more resource changes to avoid intermittent errors. " +
 					"Note: when enabled, synchronization of changes may be delayed. Default: false.",
+				Optional: true,
+			},
+			"max_concurrent": schema.Int64Attribute{
+				MarkdownDescription: "Maximum number of concurrent mutating API requests (POST/PUT/DELETE) allowed. " +
+					"Limits parallel write operations to prevent API 503 errors when Terraform parallelism is high. " +
+					"Read operations (GET) are not limited. " +
+					"Set to 0 for unlimited (no semaphore). Set to 1 to serialize all mutating API calls. Default: 3.",
 				Optional: true,
 			},
 		},
@@ -250,10 +258,23 @@ func (p *SPAProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		suppressASBNotifications = data.SuppressASBNotifications.ValueBool()
 	}
 
+	maxConcurrent := int64(3) // Default to 3 (optimal concurrency without triggering 503s)
+	if !data.MaxConcurrent.IsNull() {
+		maxConcurrent = data.MaxConcurrent.ValueInt64()
+	}
+	if maxConcurrent < 0 {
+		resp.Diagnostics.AddError(
+			"Invalid max_concurrent value",
+			"max_concurrent must be >= 0. Set to 0 to disable the concurrency limit (unlimited).",
+		)
+		return
+	}
+
 	tflog.Debug(ctx, "spa-terraform-provider: Provider configuration", map[string]any{
 		"enable_token_cache":         enableTokenCache,
 		"fetch_details_on_list":      fetchDetailsOnList,
 		"suppress_asb_notifications": suppressASBNotifications,
+		"max_concurrent":             maxConcurrent,
 	})
 
 	// Create the appropriate client based on authentication method
@@ -266,7 +287,7 @@ func (p *SPAProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		// Use service principal authentication
 		tp = NewAuthenticatedClient(tokenURL, customerID, clientID, clientSecret, enableTokenCache)
 	}
-	client = NewAPIClient(baseURL, customerID, authToken, p.limiter, fetchDetailsOnList, suppressASBNotifications, tp, userAgent)
+	client = NewAPIClient(baseURL, customerID, authToken, p.limiter, maxConcurrent, fetchDetailsOnList, suppressASBNotifications, tp, userAgent)
 
 	resp.DataSourceData = client
 	resp.ResourceData = client

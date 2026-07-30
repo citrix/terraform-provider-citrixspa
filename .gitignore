@@ -25,6 +25,7 @@ resource-discovery-debug.log
 
 # Build artifacts
 terraform-provider-spa
+terraform-provider-citrixspa
 dist/
 build/
 

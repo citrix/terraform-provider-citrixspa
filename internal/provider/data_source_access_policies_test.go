@@ -17,7 +17,7 @@ import (
 // policies without any filters.
 func testAccAccessPoliciesDataSourceConfig() string {
 	return `
-data "spa_access_policies" "all" {}
+data "citrixspa_access_policies" "all" {}
 `
 }
 
@@ -40,7 +40,7 @@ func testAccAccessPoliciesDataSourceBasicConfig(policyName string) string {
 		description:  "DS policies basic acceptance test app",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
 		resourceName:    "basic_policy",
@@ -52,8 +52,8 @@ func testAccAccessPoliciesDataSourceBasicConfig(policyName string) string {
 		accessRulesHCL:  testAccBasicAccessRulesHCL,
 	})
 	return rdConfig + appConfig + policyConfig + `
-data "spa_access_policies" "all" {
-  depends_on = [spa_access_policy.basic_policy]
+data "citrixspa_access_policies" "all" {
+  depends_on = [citrixspa_access_policy.basic_policy]
 }
 `
 }
@@ -76,7 +76,7 @@ func testAccAccessPoliciesDataSourcePaginationConfig(policyName string) string {
 		description:  "DS policies pagination acceptance test app",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
 		resourceName:    "pagination_policy",
@@ -88,10 +88,10 @@ func testAccAccessPoliciesDataSourcePaginationConfig(policyName string) string {
 		accessRulesHCL:  testAccBasicAccessRulesHCL,
 	})
 	return rdConfig + appConfig + policyConfig + `
-data "spa_access_policies" "paged" {
+data "citrixspa_access_policies" "paged" {
   offset     = 0
   limit      = 1
-  depends_on = [spa_access_policy.pagination_policy]
+  depends_on = [citrixspa_access_policy.pagination_policy]
 }
 `
 }
@@ -116,7 +116,7 @@ func testAccAccessPoliciesDataSourceOffsetConfig(policy1Name, policy2Name string
 		description:  "DS policies offset acceptance test app",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 	policy1Config := testAccAccessPolicyConfig(testAccessPolicyConfig{
 		resourceName:    "offset_policy_1",
@@ -137,15 +137,15 @@ func testAccAccessPoliciesDataSourceOffsetConfig(policy1Name, policy2Name string
 		accessRulesHCL:  testAccBasicAccessRulesHCL,
 	})
 	return rdConfig + appConfig + policy1Config + policy2Config + `
-data "spa_access_policies" "page1" {
+data "citrixspa_access_policies" "page1" {
   offset     = 0
   limit      = 2
-  depends_on = [spa_access_policy.offset_policy_1, spa_access_policy.offset_policy_2]
+  depends_on = [citrixspa_access_policy.offset_policy_1, citrixspa_access_policy.offset_policy_2]
 }
-data "spa_access_policies" "page2" {
+data "citrixspa_access_policies" "page2" {
   offset     = 1
   limit      = 2
-  depends_on = [spa_access_policy.offset_policy_1, spa_access_policy.offset_policy_2]
+  depends_on = [citrixspa_access_policy.offset_policy_1, citrixspa_access_policy.offset_policy_2]
 }
 `
 }
@@ -168,7 +168,7 @@ func testAccAccessPoliciesDataSourceRequiredFieldsConfig(policyName string) stri
 		description:  "DS policies fields acceptance test app",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
 		resourceName:    "fields_policy",
@@ -180,10 +180,10 @@ func testAccAccessPoliciesDataSourceRequiredFieldsConfig(policyName string) stri
 		accessRulesHCL:  testAccBasicAccessRulesHCL,
 	})
 	return rdConfig + appConfig + policyConfig + `
-data "spa_access_policies" "paged" {
+data "citrixspa_access_policies" "paged" {
   offset     = 0
   limit      = 5
-  depends_on = [spa_access_policy.fields_policy]
+  depends_on = [citrixspa_access_policy.fields_policy]
 }
 `
 }
@@ -192,7 +192,7 @@ data "spa_access_policies" "paged" {
 // reads access policies with explicit offset/limit values.
 func testAccAccessPoliciesDataSourceConfigWithPagination(offset, limit int) string {
 	return fmt.Sprintf(`
-data "spa_access_policies" "paged" {
+data "citrixspa_access_policies" "paged" {
   offset = %d
   limit  = %d
 }
@@ -219,7 +219,7 @@ func testAccAccessPoliciesDataSourceWithResourceConfig(policyName string) string
 		description:  "DS policies list acceptance test app",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -233,8 +233,8 @@ func testAccAccessPoliciesDataSourceWithResourceConfig(policyName string) string
 	})
 
 	return rdConfig + appConfig + policyConfig + `
-data "spa_access_policies" "all" {
-  depends_on = [spa_access_policy.ds_policies]
+data "citrixspa_access_policies" "all" {
+  depends_on = [citrixspa_access_policy.ds_policies]
 }
 `
 }
@@ -258,7 +258,7 @@ func testAccAccessPoliciesDataSourceWithNameFilterConfig(policyName string) stri
 		description:  "DS policies list acceptance test app",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -272,9 +272,9 @@ func testAccAccessPoliciesDataSourceWithNameFilterConfig(policyName string) stri
 	})
 
 	return rdConfig + appConfig + policyConfig + fmt.Sprintf(`
-data "spa_access_policies" "filtered" {
+data "citrixspa_access_policies" "filtered" {
   name       = %q
-  depends_on = [spa_access_policy.ds_policies]
+  depends_on = [citrixspa_access_policy.ds_policies]
 }
 `, policyName)
 }
@@ -305,7 +305,7 @@ func testAccCheckAccessPoliciesListNonEmpty(dataSourceName string) resource.Test
 }
 
 // testAccCheckAccessPoliciesContainsName verifies that the given policy name
-// appears in the access_policies list returned by a spa_access_policies data
+// appears in the access_policies list returned by a citrixspa_access_policies data
 // source.
 func testAccCheckAccessPoliciesContainsName(dataSourceName, policyName string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
@@ -359,13 +359,13 @@ func TestAccAccessPoliciesDataSource_basic(t *testing.T) {
 			{
 				Config: testAccAccessPoliciesDataSourceBasicConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.basic_policy"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.basic_policy"),
 					// pagination defaults are reflected in state
-					resource.TestCheckResourceAttr("data.spa_access_policies.all", "offset", "0"),
-					resource.TestCheckResourceAttr("data.spa_access_policies.all", "limit", "-1"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.all", "offset", "0"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.all", "limit", "-1"),
 					// list must be present and non-empty
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.all", "access_policies.#"),
-					testAccCheckAccessPoliciesListNonEmpty("data.spa_access_policies.all"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.all", "access_policies.#"),
+					testAccCheckAccessPoliciesListNonEmpty("data.citrixspa_access_policies.all"),
 				),
 			},
 		},
@@ -392,12 +392,12 @@ func TestAccAccessPoliciesDataSource_withResource(t *testing.T) {
 			{
 				Config: testAccAccessPoliciesDataSourceWithResourceConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.ds_policies"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.ds_policies"),
 					// newly created policy must appear in the list
-					testAccCheckAccessPoliciesContainsName("data.spa_access_policies.all", policyName),
+					testAccCheckAccessPoliciesContainsName("data.citrixspa_access_policies.all", policyName),
 					// list must be non-empty
-					testAccCheckAccessPoliciesListNonEmpty("data.spa_access_policies.all"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.all", "access_policies.#"),
+					testAccCheckAccessPoliciesListNonEmpty("data.citrixspa_access_policies.all"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.all", "access_policies.#"),
 				),
 			},
 		},
@@ -424,14 +424,14 @@ func TestAccAccessPoliciesDataSource_pagination(t *testing.T) {
 			{
 				Config: testAccAccessPoliciesDataSourcePaginationConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.pagination_policy"),
-					resource.TestCheckResourceAttr("data.spa_access_policies.paged", "offset", "0"),
-					resource.TestCheckResourceAttr("data.spa_access_policies.paged", "limit", "1"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.pagination_policy"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.paged", "offset", "0"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.paged", "limit", "1"),
 					// exactly 1 item should come back
-					resource.TestCheckResourceAttr("data.spa_access_policies.paged", "access_policies.#", "1"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.paged", "access_policies.#", "1"),
 					// that one item must have required fields
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.id"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.name"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.paged", "access_policies.0.id"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.paged", "access_policies.0.name"),
 				),
 			},
 		},
@@ -464,21 +464,21 @@ func TestAccAccessPoliciesDataSource_offset(t *testing.T) {
 				Config: testAccAccessPoliciesDataSourceOffsetConfig(policy1Name, policy2Name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// both policies must exist
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.offset_policy_1"),
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.offset_policy_2"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.offset_policy_1"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.offset_policy_2"),
 					// pagination attributes reflected in state
-					resource.TestCheckResourceAttr("data.spa_access_policies.page1", "offset", "0"),
-					resource.TestCheckResourceAttr("data.spa_access_policies.page1", "limit", "2"),
-					resource.TestCheckResourceAttr("data.spa_access_policies.page2", "offset", "1"),
-					resource.TestCheckResourceAttr("data.spa_access_policies.page2", "limit", "2"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.page1", "offset", "0"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.page1", "limit", "2"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.page2", "offset", "1"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.page2", "limit", "2"),
 					// page1 must return exactly 2 items (limit=2 and >=2 policies exist)
-					resource.TestCheckResourceAttr("data.spa_access_policies.page1", "access_policies.#", "2"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.page1", "access_policies.#", "2"),
 					// page2 must return at least 1 item
-					testAccCheckAccessPoliciesListNonEmpty("data.spa_access_policies.page2"),
+					testAccCheckAccessPoliciesListNonEmpty("data.citrixspa_access_policies.page2"),
 					// sliding-window: page1[1] and page2[0] must be the same policy
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policies.page1", "access_policies.1.id",
-						"data.spa_access_policies.page2", "access_policies.0.id",
+						"data.citrixspa_access_policies.page1", "access_policies.1.id",
+						"data.citrixspa_access_policies.page2", "access_policies.0.id",
 					),
 				),
 			},
@@ -507,14 +507,14 @@ func TestAccAccessPoliciesDataSource_eachItemHasRequiredFields(t *testing.T) {
 			{
 				Config: testAccAccessPoliciesDataSourceRequiredFieldsConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.fields_policy"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.#"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.id"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.name"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.active"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.priority"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.apps.#"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.paged", "access_policies.0.modified"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.fields_policy"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.paged", "access_policies.#"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.paged", "access_policies.0.id"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.paged", "access_policies.0.name"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.paged", "access_policies.0.active"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.paged", "access_policies.0.priority"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.paged", "access_policies.0.apps.#"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.paged", "access_policies.0.modified"),
 				),
 			},
 		},
@@ -541,13 +541,13 @@ func TestAccAccessPoliciesDataSource_nameFilter(t *testing.T) {
 			{
 				Config: testAccAccessPoliciesDataSourceWithNameFilterConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.ds_policies"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.ds_policies"),
 					// filtered list must contain our policy
-					testAccCheckAccessPoliciesContainsName("data.spa_access_policies.filtered", policyName),
-					resource.TestCheckResourceAttr("data.spa_access_policies.filtered", "name", policyName),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.filtered", "access_policies.#"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policies.filtered", "access_policies.0.id"),
-					resource.TestCheckResourceAttr("data.spa_access_policies.filtered", "access_policies.0.name", policyName),
+					testAccCheckAccessPoliciesContainsName("data.citrixspa_access_policies.filtered", policyName),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.filtered", "name", policyName),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.filtered", "access_policies.#"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policies.filtered", "access_policies.0.id"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policies.filtered", "access_policies.0.name", policyName),
 				),
 			},
 		},
@@ -575,7 +575,7 @@ func TestAccAccessPoliciesDataSource_apiDirectVerification(t *testing.T) {
 			{
 				Config: testAccAccessPoliciesDataSourceWithResourceConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.ds_policies"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.ds_policies"),
 					func(s *terraform.State) error {
 						client, err := testAccCreateClient()
 						if err != nil {

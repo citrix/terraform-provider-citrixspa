@@ -24,9 +24,9 @@ func testAccApplicationDataSourceByNameConfig(name string) string {
 		relatedURLs:  []string{fmt.Sprintf("*.%s.example.com", name)},
 		keywords:     []string{"acc-test"},
 	}) + fmt.Sprintf(`
-data "spa_application" "by_name" {
+data "citrixspa_application" "by_name" {
   name       = %q
-  depends_on = [spa_application.ds_app]
+  depends_on = [citrixspa_application.ds_app]
 }
 `, name)
 }
@@ -42,9 +42,9 @@ func testAccApplicationDataSourceByIDConfig(name string) string {
 		url:          fmt.Sprintf("https://%s.example.com", name),
 		relatedURLs:  []string{fmt.Sprintf("*.%s.example.com", name)},
 	}) + `
-data "spa_application" "by_id" {
-  id         = spa_application.ds_app.id
-  depends_on = [spa_application.ds_app]
+data "citrixspa_application" "by_id" {
+  id         = citrixspa_application.ds_app.id
+  depends_on = [citrixspa_application.ds_app]
 }
 `
 }
@@ -61,9 +61,9 @@ func testAccApplicationDataSourceUpdatedConfig(name, description string) string 
 		relatedURLs:  []string{fmt.Sprintf("*.%s.example.com", name)},
 		keywords:     []string{"acc-test", "updated"},
 	}) + fmt.Sprintf(`
-data "spa_application" "by_name" {
+data "citrixspa_application" "by_name" {
   name       = %q
-  depends_on = [spa_application.ds_app]
+  depends_on = [citrixspa_application.ds_app]
 }
 `, name)
 }
@@ -72,7 +72,7 @@ data "spa_application" "by_name" {
 // never exist in the environment.
 func testAccApplicationDataSourceNotFoundConfig() string {
 	return `
-data "spa_application" "missing" {
+data "citrixspa_application" "missing" {
   name = "tf-acc-nonexistent-app-should-not-exist"
 }
 `
@@ -98,47 +98,47 @@ func TestAccApplicationDataSource_byName(t *testing.T) {
 			{
 				Config: testAccApplicationDataSourceByNameConfig(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.ds_app"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.ds_app"),
 					// id and name must be populated
-					resource.TestCheckResourceAttrSet("data.spa_application.by_name", "id"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "name", name),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "type", "web"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "description", "DS by name acceptance test"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "url", fmt.Sprintf("https://%s.example.com", name)),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "hidden", "false"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "agentless_access", "false"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "mobile_security", "false"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "sbs_only_launch", "false"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "using_template", "false"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "related_urls.#", "1"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "keywords.#", "1"),
-					resource.TestCheckTypeSetElemAttr("data.spa_application.by_name", "keywords.*", "acc-test"),
-					resource.TestCheckResourceAttrSet("data.spa_application.by_name", "state"),
-					resource.TestCheckResourceAttrSet("data.spa_application.by_name", "created_time"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.by_name", "id"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "name", name),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "type", "web"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "description", "DS by name acceptance test"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "url", fmt.Sprintf("https://%s.example.com", name)),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "hidden", "false"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "agentless_access", "false"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "mobile_security", "false"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "sbs_only_launch", "false"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "using_template", "false"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "related_urls.#", "1"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "keywords.#", "1"),
+					resource.TestCheckTypeSetElemAttr("data.citrixspa_application.by_name", "keywords.*", "acc-test"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.by_name", "state"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.by_name", "created_time"),
 					// Data source values must match the resource
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_name", "id",
-						"spa_application.ds_app", "id",
+						"data.citrixspa_application.by_name", "id",
+						"citrixspa_application.ds_app", "id",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_name", "name",
-						"spa_application.ds_app", "name",
+						"data.citrixspa_application.by_name", "name",
+						"citrixspa_application.ds_app", "name",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_name", "type",
-						"spa_application.ds_app", "type",
+						"data.citrixspa_application.by_name", "type",
+						"citrixspa_application.ds_app", "type",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_name", "description",
-						"spa_application.ds_app", "description",
+						"data.citrixspa_application.by_name", "description",
+						"citrixspa_application.ds_app", "description",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_name", "url",
-						"spa_application.ds_app", "url",
+						"data.citrixspa_application.by_name", "url",
+						"citrixspa_application.ds_app", "url",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_name", "state",
-						"spa_application.ds_app", "state",
+						"data.citrixspa_application.by_name", "state",
+						"citrixspa_application.ds_app", "state",
 					),
 				),
 			},
@@ -162,29 +162,29 @@ func TestAccApplicationDataSource_byID(t *testing.T) {
 			{
 				Config: testAccApplicationDataSourceByIDConfig(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.ds_app"),
-					resource.TestCheckResourceAttrSet("data.spa_application.by_id", "id"),
-					resource.TestCheckResourceAttr("data.spa_application.by_id", "name", name),
-					resource.TestCheckResourceAttr("data.spa_application.by_id", "type", "web"),
-					resource.TestCheckResourceAttr("data.spa_application.by_id", "description", "DS by ID acceptance test"),
-					resource.TestCheckResourceAttrSet("data.spa_application.by_id", "state"),
-					resource.TestCheckResourceAttrSet("data.spa_application.by_id", "created_time"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.ds_app"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.by_id", "id"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_id", "name", name),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_id", "type", "web"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_id", "description", "DS by ID acceptance test"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.by_id", "state"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.by_id", "created_time"),
 					// Data source values must match the resource
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_id", "id",
-						"spa_application.ds_app", "id",
+						"data.citrixspa_application.by_id", "id",
+						"citrixspa_application.ds_app", "id",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_id", "name",
-						"spa_application.ds_app", "name",
+						"data.citrixspa_application.by_id", "name",
+						"citrixspa_application.ds_app", "name",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_id", "type",
-						"spa_application.ds_app", "type",
+						"data.citrixspa_application.by_id", "type",
+						"citrixspa_application.ds_app", "type",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_id", "description",
-						"spa_application.ds_app", "description",
+						"data.citrixspa_application.by_id", "description",
+						"citrixspa_application.ds_app", "description",
 					),
 				),
 			},
@@ -209,23 +209,23 @@ func TestAccApplicationDataSource_reflectsUpdate(t *testing.T) {
 			{
 				Config: testAccApplicationDataSourceByNameConfig(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "name", name),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "description", "DS by name acceptance test"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "keywords.#", "1"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "name", name),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "description", "DS by name acceptance test"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "keywords.#", "1"),
 				),
 			},
 			// Step 2: update description and keywords; data source must reflect new values
 			{
 				Config: testAccApplicationDataSourceUpdatedConfig(name, "DS by name acceptance test UPDATED"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "name", name),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "description", "DS by name acceptance test UPDATED"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "keywords.#", "2"),
-					resource.TestCheckTypeSetElemAttr("data.spa_application.by_name", "keywords.*", "acc-test"),
-					resource.TestCheckTypeSetElemAttr("data.spa_application.by_name", "keywords.*", "updated"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "name", name),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "description", "DS by name acceptance test UPDATED"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "keywords.#", "2"),
+					resource.TestCheckTypeSetElemAttr("data.citrixspa_application.by_name", "keywords.*", "acc-test"),
+					resource.TestCheckTypeSetElemAttr("data.citrixspa_application.by_name", "keywords.*", "updated"),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_name", "description",
-						"spa_application.ds_app", "description",
+						"data.citrixspa_application.by_name", "description",
+						"citrixspa_application.ds_app", "description",
 					),
 				),
 			},
@@ -257,21 +257,21 @@ func TestAccApplicationDataSource_saas(t *testing.T) {
 					relatedURLs:     []string{fmt.Sprintf("*.%s.example.com", name)},
 					sso:             `{ type = "nosso" }`,
 				}) + fmt.Sprintf(`
-data "spa_application" "by_name" {
+data "citrixspa_application" "by_name" {
   name       = %q
-  depends_on = [spa_application.ds_app]
+  depends_on = [citrixspa_application.ds_app]
 }
 `, name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.ds_app"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "name", name),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "type", "saas"),
-					resource.TestCheckResourceAttr("data.spa_application.by_name", "agentless_access", "true"),
-					resource.TestCheckResourceAttrSet("data.spa_application.by_name", "id"),
-					resource.TestCheckResourceAttrSet("data.spa_application.by_name", "state"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.ds_app"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "name", name),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "type", "saas"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.by_name", "agentless_access", "true"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.by_name", "id"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.by_name", "state"),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.by_name", "id",
-						"spa_application.ds_app", "id",
+						"data.citrixspa_application.by_name", "id",
+						"citrixspa_application.ds_app", "id",
 					),
 				),
 			},
@@ -326,29 +326,29 @@ func TestAccApplicationDataSource_samlSSO(t *testing.T) {
 						custom_attributes = []
 					}`,
 				}) + fmt.Sprintf(`
-data "spa_application" "saml_by_name" {
+data "citrixspa_application" "saml_by_name" {
   name       = %q
-  depends_on = [spa_application.ds_saml_app]
+  depends_on = [citrixspa_application.ds_saml_app]
 }
 `, name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.ds_saml_app"),
-					resource.TestCheckResourceAttrSet("data.spa_application.saml_by_name", "id"),
-					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "name", name),
-					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "type", "saas"),
-					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "sso.type", "saml"),
-					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "sso.assertion_url", "https://sp.example.com/acs"),
-					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "sso.audience", "https://sp.example.com"),
-					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "sso.name_id_format", "emailAddress"),
-					resource.TestCheckResourceAttr("data.spa_application.saml_by_name", "sso.name_id_source", "email"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.ds_saml_app"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.saml_by_name", "id"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.saml_by_name", "name", name),
+					resource.TestCheckResourceAttr("data.citrixspa_application.saml_by_name", "type", "saas"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.saml_by_name", "sso.type", "saml"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.saml_by_name", "sso.assertion_url", "https://sp.example.com/acs"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.saml_by_name", "sso.audience", "https://sp.example.com"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.saml_by_name", "sso.name_id_format", "emailAddress"),
+					resource.TestCheckResourceAttr("data.citrixspa_application.saml_by_name", "sso.name_id_source", "email"),
 					// Data source shows ALL fields including server-computed ones
-					resource.TestCheckResourceAttrSet("data.spa_application.saml_by_name", "sso.saml_sso_login_url"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.saml_by_name", "sso.saml_sso_login_url"),
 					// customer is a server-computed metadata field
-					resource.TestCheckResourceAttrSet("data.spa_application.saml_by_name", "sso.customer"),
-					resource.TestCheckResourceAttrSet("data.spa_application.saml_by_name", "state"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.saml_by_name", "sso.customer"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_application.saml_by_name", "state"),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_application.saml_by_name", "id",
-						"spa_application.ds_saml_app", "id",
+						"data.citrixspa_application.saml_by_name", "id",
+						"citrixspa_application.ds_saml_app", "id",
 					),
 				),
 			},

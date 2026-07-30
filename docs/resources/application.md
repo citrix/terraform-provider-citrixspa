@@ -1,10 +1,10 @@
 ---
-page_title: "spa_application Resource - spa"
+page_title: "citrixspa_application Resource - citrixspa"
 description: |-
   Resource for creating and managing SPA applications.
 ---
 
-# spa_application (Resource)
+# citrixspa_application (Resource)
 
 Resource for creating and managing SPA applications. Supports web, SaaS, and ZTNA application types.
 
@@ -19,7 +19,7 @@ Applications can be created in an `incomplete` state and later transitioned to `
 Applications rely on routing domains derived from their `url` and `related_urls`. When managing both resources in the same configuration, you must declare explicit dependencies so that routing domains are created before the application:
 
 ```terraform
-resource "spa_application" "my_web_application" {
+resource "citrixspa_application" "my_web_application" {
   name = "My Web Application"
   type = "web"
   url  = "https://example.com"
@@ -27,8 +27,8 @@ resource "spa_application" "my_web_application" {
   # ...
 
   depends_on = [
-    spa_routing_domain.example_com,
-    spa_routing_domain.api_example_com,
+    citrixspa_routing_domain.example_com,
+    citrixspa_routing_domain.api_example_com,
   ]
 }
 ```
@@ -48,7 +48,7 @@ resource "spa_application" "my_web_application" {
 ### Web Application
 
 ```terraform
-resource "spa_application" "my_web_application" {
+resource "citrixspa_application" "my_web_application" {
   name        = "My Web Application"
   type        = "web"
   state       = "complete"
@@ -74,8 +74,8 @@ resource "spa_application" "my_web_application" {
   ]
 
   depends_on = [
-    spa_routing_domain.example_com,
-    spa_routing_domain.wildcard_example_com
+    citrixspa_routing_domain.example_com,
+    citrixspa_routing_domain.wildcard_example_com
   ]
 }
 ```
@@ -83,7 +83,7 @@ resource "spa_application" "my_web_application" {
 ### ZTNA Application
 
 ```terraform
-resource "spa_application" "ztna_app" {
+resource "citrixspa_application" "ztna_app" {
   name        = "Internal Database"
   type        = "ztna"
   state       = "complete"
@@ -113,8 +113,8 @@ resource "spa_application" "ztna_app" {
   sbs_only_launch  = false
 
   depends_on = [
-    spa_routing_domain.database_internal_com,
-    spa_routing_domain.routing_domain_10_0_1_0_24
+    citrixspa_routing_domain.database_internal_com,
+    citrixspa_routing_domain.routing_domain_10_0_1_0_24
   ]
 }
 ```
@@ -122,7 +122,7 @@ resource "spa_application" "ztna_app" {
 ### SaaS Application
 
 ```terraform
-resource "spa_application" "saas_app" {
+resource "citrixspa_application" "saas_app" {
   name        = "Office 365"
   type        = "saas"
   state = "complete"
@@ -154,10 +154,10 @@ resource "spa_application" "saas_app" {
   ]
 
   depends_on = [
-    spa_routing_domain.office_com,
-    spa_routing_domain.wildcard_office_com,
-    spa_routing_domain.wildcard_outlook_office_com,
-    spa_routing_domain.wildcard_teams_microsoft_com
+    citrixspa_routing_domain.office_com,
+    citrixspa_routing_domain.wildcard_office_com,
+    citrixspa_routing_domain.wildcard_outlook_office_com,
+    citrixspa_routing_domain.wildcard_teams_microsoft_com
   ]
 }
 ```
@@ -165,7 +165,7 @@ resource "spa_application" "saas_app" {
 ### SAML SSO Configuration
 
 ```terraform
-resource "spa_application" "saml_app" {
+resource "citrixspa_application" "saml_app" {
   name        = "SAML Application"
   type        = "saas"
   state       = "complete"
@@ -327,5 +327,5 @@ Optional:
 Import is supported using the application ID:
 
 ```shell
-terraform import spa_application.web_app 00000000-0000-0000-0000-000000000000
+terraform import citrixspa_application.web_app 00000000-0000-0000-0000-000000000000
 ```

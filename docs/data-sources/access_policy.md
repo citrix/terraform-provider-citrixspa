@@ -1,10 +1,10 @@
 ---
-page_title: "spa_access_policy Data Source - spa"
+page_title: "citrixspa_access_policy Data Source - citrixspa"
 description: |-
   Fetches a single SPA access policy by ID or name.
 ---
 
-# spa_access_policy (Data Source)
+# citrixspa_access_policy (Data Source)
 
 Fetches a single SPA access policy by ID or name. When looking up by name, the name must match exactly one policy.
 
@@ -14,12 +14,12 @@ For more details on the underlying API, see the [Access Policies API documentati
 
 ```terraform
 # Look up by ID
-data "spa_access_policy" "by_id" {
+data "citrixspa_access_policy" "by_id" {
   id = "00000000-0000-0000-0000-000000000000"
 }
 
 # Look up by name
-data "spa_access_policy" "by_name" {
+data "citrixspa_access_policy" "by_name" {
   name = "Allow Developers"
 }
 ```

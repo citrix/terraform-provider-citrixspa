@@ -1,12 +1,12 @@
 terraform {
   required_providers {
-    spa = {
+    citrixspa = {
       source = "citrix/citrixspa"
     }
   }
 }
 
-provider "spa" {
+provider "citrixspa" {
   base_url      = var.base_url
   token_url     = var.token_url
   customer_id   = var.citrix_customer_id

@@ -1,5 +1,14 @@
 management_summary.md
 imports.tf
 spa_resources.tf
+spa_resources.tf.bak
 temp_*.json
 tfplan
+
+# Local credentials & Terraform state — NEVER commit (migrate.ps1 writes live
+# service-principal creds into terraform.tfvars; state can also contain secrets).
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl

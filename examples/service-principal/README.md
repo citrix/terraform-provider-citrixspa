@@ -46,14 +46,14 @@ terraform apply
 terraform {
   required_version = ">= 0.13"
   required_providers {
-    spa = {
+    citrixspa = {
       source  = "citrix/citrixspa"
-      version = "~> 0.1.0"
+      version = "1.1.0"
     }
   }
 }
 
-provider "spa" {
+provider "citrixspa" {
   base_url      = "https://api.cloud.com/accessSecurity"
   customer_id   = var.citrix_customer_id
   client_id     = var.citrix_client_id
@@ -80,26 +80,26 @@ variable "citrix_client_secret" {
 }
 
 # Data sources for existing resources
-data "spa_application" "existing_apps" {
+data "citrixspa_application" "existing_apps" {
   # List existing applications
 }
 
 # Create a new application
-resource "spa_application" "web_app" {
+resource "citrixspa_application" "web_app" {
   name        = "My Web Application"
   description = "Web application managed by Terraform"
   # Add other required attributes based on your provider schema
 }
 
 # Create a security group
-resource "spa_security_group" "web_sg" {
+resource "citrixspa_security_group" "web_sg" {
   name        = "web-security-group"
   description = "Security group for web applications"
   # Add security rules and other attributes
 }
 
 # Create an access policy
-resource "spa_access_policy" "web_policy" {
+resource "citrixspa_access_policy" "web_policy" {
   name        = "web-access-policy"
   description = "Access policy for web applications"
   # Configure access rules
@@ -108,17 +108,17 @@ resource "spa_access_policy" "web_policy" {
 # Outputs
 output "application_id" {
   description = "ID of the created application"
-  value       = spa_application.web_app.id
+  value       = citrixspa_application.web_app.id
 }
 
 output "security_group_id" {
   description = "ID of the created security group"
-  value       = spa_security_group.web_sg.id
+  value       = citrixspa_security_group.web_sg.id
 }
 
 output "access_policy_id" {
   description = "ID of the created access policy"
-  value       = spa_access_policy.web_policy.id
+  value       = citrixspa_access_policy.web_policy.id
 }
 ```
 
@@ -182,7 +182,7 @@ terraform apply
 If your Citrix Cloud account is in the Japan region, modify the provider configuration:
 
 ```hcl
-provider "spa" {
+provider "citrixspa" {
   base_url      = "https://api.citrixcloud.jp"
   customer_id   = var.citrix_customer_id
   client_id     = var.citrix_client_id

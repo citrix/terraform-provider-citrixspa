@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and fill in the dedicated E2E test tenant credentials.
+# In CI these are supplied via TF_VAR_* environment variables from repo secrets,
+# so this file is only needed for local runs.
+
+citrix_customer_id   = "your-e2e-tenant-customer-id"
+citrix_client_id     = "your-service-principal-client-id"
+citrix_client_secret = "your-service-principal-client-secret"
+
+base_url  = "https://api.cloud.com/accessSecurity"
+token_url = "https://api.cloud.com"
+
+# Prefix applied to every created resource; cleanup.sh sweeps by this prefix.
+name_prefix = "e2e"
+
+# --- migrate scenario only: SECOND (target) tenant ---------------------------
+# Required only for tooling/run-migrate-e2e.sh. This tenant is WIPED before the
+# migration (reset), so it MUST be a dedicated throwaway tenant.
+# citrix_customer_id_b   = "your-second-e2e-tenant-customer-id"
+# citrix_client_id_b     = "second-tenant-service-principal-client-id"
+# citrix_client_secret_b = "second-tenant-service-principal-client-secret"

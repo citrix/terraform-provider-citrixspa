@@ -1,25 +1,25 @@
 ---
-page_title: "spa_applications Data Source - spa"
+page_title: "citrixspa_applications Data Source - citrixspa"
 description: |-
   Fetches a list of all SPA applications.
 ---
 
-# spa_applications (Data Source)
+# citrixspa_applications (Data Source)
 
 Fetches a paginated list of all SPA applications.
 
 For more details on the underlying API, see the [Applications API documentation](https://developer-docs.citrix.com/en-us/secure-private-access/access-security/handling-applications).
 
--> **Note** For full details on each application (including SSO and policies), use the singular `spa_application` data source with a specific `id`. In the list response, `sso` is returned as type only.
+-> **Note** For full details on each application (including SSO and policies), use the singular `citrixspa_application` data source with a specific `id`. In the list response, `sso` is returned as type only.
 
 ## Example Usage
 
 ```terraform
 # Fetch all applications
-data "spa_applications" "all" {}
+data "citrixspa_applications" "all" {}
 
 # Fetch with pagination
-data "spa_applications" "page" {
+data "citrixspa_applications" "page" {
   offset = 0
   limit  = 50
 }

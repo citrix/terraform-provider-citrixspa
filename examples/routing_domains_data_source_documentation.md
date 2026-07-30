@@ -14,18 +14,18 @@ GET https://api.cloud.com/accessSecurity/routingDomains
 
 ```hcl
 # Get all routing domains
-data "spa_routing_domains" "all" {
+data "citrixspa_routing_domains" "all" {
 }
 
 # Get routing domains with pagination
-data "spa_routing_domains" "paginated" {
+data "citrixspa_routing_domains" "paginated" {
   offset = 0
   limit  = 50
 }
 
 # Output the routing domains
 output "routing_domains" {
-  value = data.spa_routing_domains.all.routing_domains
+  value = data.citrixspa_routing_domains.all.routing_domains
 }
 ```
 
@@ -60,6 +60,6 @@ In addition to all arguments above, the following attributes are exported:
 
 ## Notes
 
-- This data source complements the existing `spa_routing_domain` data source, which retrieves a single routing domain by FQDN.
+- This data source complements the existing `citrixspa_routing_domain` data source, which retrieves a single routing domain by FQDN.
 - The API endpoint requires proper authentication via the SPA provider configuration.
 - Use pagination parameters for large datasets to improve performance.

@@ -1,10 +1,10 @@
 ---
-page_title: "spa_security_group Data Source - spa"
+page_title: "citrixspa_security_group Data Source - citrixspa"
 description: |-
   Fetches a single SPA security group by ID.
 ---
 
-# spa_security_group (Data Source)
+# citrixspa_security_group (Data Source)
 
 Fetches a single SPA security group by its ID.
 
@@ -13,7 +13,7 @@ Security groups define clipboard isolation policies that control the flow of dat
 ## Example Usage
 
 ```terraform
-data "spa_security_group" "example" {
+data "citrixspa_security_group" "example" {
   id = "00000000-0000-0000-0000-000000000000"
 }
 ```

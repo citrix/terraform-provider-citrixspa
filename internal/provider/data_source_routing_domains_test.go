@@ -17,7 +17,7 @@ import (
 // routing domains without any pagination arguments.
 func testAccRoutingDomainsDataSourceConfig() string {
 	return `
-data "spa_routing_domains" "all" {}
+data "citrixspa_routing_domains" "all" {}
 `
 }
 
@@ -25,7 +25,7 @@ data "spa_routing_domains" "all" {}
 // resource and reads all routing domains so the list is guaranteed non-empty.
 func testAccRoutingDomainsDataSourceBasicConfig(fqdn string) string {
 	return fmt.Sprintf(`
-resource "spa_routing_domain" "basic_test" {
+resource "citrixspa_routing_domain" "basic_test" {
   fqdn         = %q
   type         = "internal"
   app_type     = "web"
@@ -35,8 +35,8 @@ resource "spa_routing_domain" "basic_test" {
   location_ids = []
 }
 
-data "spa_routing_domains" "all" {
-  depends_on = [spa_routing_domain.basic_test]
+data "citrixspa_routing_domains" "all" {
+  depends_on = [citrixspa_routing_domain.basic_test]
 }
 `, fqdn)
 }
@@ -46,7 +46,7 @@ data "spa_routing_domains" "all" {
 // is verified against a known-present item.
 func testAccRoutingDomainsDataSourcePaginationConfig(fqdn string) string {
 	return fmt.Sprintf(`
-resource "spa_routing_domain" "pagination_test" {
+resource "citrixspa_routing_domain" "pagination_test" {
   fqdn         = %q
   type         = "internal"
   app_type     = "web"
@@ -56,10 +56,10 @@ resource "spa_routing_domain" "pagination_test" {
   location_ids = []
 }
 
-data "spa_routing_domains" "paged" {
+data "citrixspa_routing_domains" "paged" {
   offset     = 0
   limit      = 1
-  depends_on = [spa_routing_domain.pagination_test]
+  depends_on = [citrixspa_routing_domain.pagination_test]
 }
 `, fqdn)
 }
@@ -70,7 +70,7 @@ data "spa_routing_domains" "paged" {
 // can be verified.
 func testAccRoutingDomainsDataSourceOffsetConfig(fqdn1, fqdn2 string) string {
 	return fmt.Sprintf(`
-resource "spa_routing_domain" "offset_1" {
+resource "citrixspa_routing_domain" "offset_1" {
   fqdn         = %q
   type         = "internal"
   app_type     = "web"
@@ -80,7 +80,7 @@ resource "spa_routing_domain" "offset_1" {
   location_ids = []
 }
 
-resource "spa_routing_domain" "offset_2" {
+resource "citrixspa_routing_domain" "offset_2" {
   fqdn         = %q
   type         = "internal"
   app_type     = "web"
@@ -90,16 +90,16 @@ resource "spa_routing_domain" "offset_2" {
   location_ids = []
 }
 
-data "spa_routing_domains" "page1" {
+data "citrixspa_routing_domains" "page1" {
   offset     = 0
   limit      = 2
-  depends_on = [spa_routing_domain.offset_1, spa_routing_domain.offset_2]
+  depends_on = [citrixspa_routing_domain.offset_1, citrixspa_routing_domain.offset_2]
 }
 
-data "spa_routing_domains" "page2" {
+data "citrixspa_routing_domains" "page2" {
   offset     = 1
   limit      = 2
-  depends_on = [spa_routing_domain.offset_1, spa_routing_domain.offset_2]
+  depends_on = [citrixspa_routing_domain.offset_1, citrixspa_routing_domain.offset_2]
 }
 `, fqdn1, fqdn2)
 }
@@ -109,7 +109,7 @@ data "spa_routing_domains" "page2" {
 // first item can be verified against a known-present entry.
 func testAccRoutingDomainsDataSourceRequiredFieldsConfig(fqdn string) string {
 	return fmt.Sprintf(`
-resource "spa_routing_domain" "fields_test" {
+resource "citrixspa_routing_domain" "fields_test" {
   fqdn         = %q
   type         = "internal"
   app_type     = "web"
@@ -119,10 +119,10 @@ resource "spa_routing_domain" "fields_test" {
   location_ids = []
 }
 
-data "spa_routing_domains" "paged" {
+data "citrixspa_routing_domains" "paged" {
   offset     = 0
   limit      = 5
-  depends_on = [spa_routing_domain.fields_test]
+  depends_on = [citrixspa_routing_domain.fields_test]
 }
 `, fqdn)
 }
@@ -131,7 +131,7 @@ data "spa_routing_domains" "paged" {
 // reads routing domains using explicit offset and limit values.
 func testAccRoutingDomainsDataSourceConfigWithPagination(offset, limit int) string {
 	return fmt.Sprintf(`
-data "spa_routing_domains" "paged" {
+data "citrixspa_routing_domains" "paged" {
   offset = %d
   limit  = %d
 }
@@ -143,7 +143,7 @@ data "spa_routing_domains" "paged" {
 // domain appears in the list.
 func testAccRoutingDomainsDataSourceWithResourceConfig(fqdn string) string {
 	return fmt.Sprintf(`
-resource "spa_routing_domain" "ds_test" {
+resource "citrixspa_routing_domain" "ds_test" {
   fqdn         = %q
   type         = "internal"
   app_type     = "web"
@@ -153,8 +153,8 @@ resource "spa_routing_domain" "ds_test" {
   location_ids = []
 }
 
-data "spa_routing_domains" "all" {
-  depends_on = [spa_routing_domain.ds_test]
+data "citrixspa_routing_domains" "all" {
+  depends_on = [citrixspa_routing_domain.ds_test]
 }
 `, fqdn)
 }
@@ -164,7 +164,7 @@ data "spa_routing_domains" "all" {
 // =============================================================================
 
 // testAccCheckRoutingDomainsContainsFQDN verifies that the given FQDN appears
-// in the routing_domains list returned by a spa_routing_domains data source.
+// in the routing_domains list returned by a citrixspa_routing_domains data source.
 func testAccCheckRoutingDomainsContainsFQDN(dataSourceName, fqdn string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[dataSourceName]
@@ -236,15 +236,15 @@ func TestAccRoutingDomainsDataSource_basic(t *testing.T) {
 			{
 				Config: testAccRoutingDomainsDataSourceBasicConfig(fqdn),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.basic_test"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.basic_test"),
 					// total must come back as a computed integer
-					resource.TestCheckResourceAttrSet("data.spa_routing_domains.all", "total"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.all", "total"),
 					// pagination defaults are reflected in state
-					resource.TestCheckResourceAttr("data.spa_routing_domains.all", "offset", "0"),
-					resource.TestCheckResourceAttr("data.spa_routing_domains.all", "limit", "-1"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.all", "offset", "0"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.all", "limit", "-1"),
 					// list attribute must be present and non-empty
-					resource.TestCheckResourceAttrSet("data.spa_routing_domains.all", "routing_domains.#"),
-					testAccCheckRoutingDomainsCountPositive("data.spa_routing_domains.all"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.all", "routing_domains.#"),
+					testAccCheckRoutingDomainsCountPositive("data.citrixspa_routing_domains.all"),
 				),
 			},
 		},
@@ -268,12 +268,12 @@ func TestAccRoutingDomainsDataSource_withResource(t *testing.T) {
 				Config: testAccRoutingDomainsDataSourceWithResourceConfig(fqdn),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// The resource must exist in the API
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.ds_test"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.ds_test"),
 					// The data source must include the newly created domain
-					testAccCheckRoutingDomainsContainsFQDN("data.spa_routing_domains.all", fqdn),
+					testAccCheckRoutingDomainsContainsFQDN("data.citrixspa_routing_domains.all", fqdn),
 					// Sanity-check the meta fields
-					testAccCheckRoutingDomainsCountPositive("data.spa_routing_domains.all"),
-					resource.TestCheckResourceAttrSet("data.spa_routing_domains.all", "total"),
+					testAccCheckRoutingDomainsCountPositive("data.citrixspa_routing_domains.all"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.all", "total"),
 				),
 			},
 		},
@@ -297,12 +297,12 @@ func TestAccRoutingDomainsDataSource_pagination(t *testing.T) {
 			{
 				Config: testAccRoutingDomainsDataSourcePaginationConfig(fqdn),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.pagination_test"),
-					resource.TestCheckResourceAttr("data.spa_routing_domains.paged", "offset", "0"),
-					resource.TestCheckResourceAttr("data.spa_routing_domains.paged", "limit", "1"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.pagination_test"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.paged", "offset", "0"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.paged", "limit", "1"),
 					// Exactly 1 item should be returned with limit=1
-					resource.TestCheckResourceAttr("data.spa_routing_domains.paged", "routing_domains.#", "1"),
-					resource.TestCheckResourceAttrSet("data.spa_routing_domains.paged", "total"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.paged", "routing_domains.#", "1"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.paged", "total"),
 				),
 			},
 		},
@@ -331,21 +331,21 @@ func TestAccRoutingDomainsDataSource_offset(t *testing.T) {
 				Config: testAccRoutingDomainsDataSourceOffsetConfig(fqdn1, fqdn2),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// both resources must exist
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.offset_1"),
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.offset_2"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.offset_1"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.offset_2"),
 					// pagination attributes reflected in state
-					resource.TestCheckResourceAttr("data.spa_routing_domains.page1", "offset", "0"),
-					resource.TestCheckResourceAttr("data.spa_routing_domains.page1", "limit", "2"),
-					resource.TestCheckResourceAttr("data.spa_routing_domains.page2", "offset", "1"),
-					resource.TestCheckResourceAttr("data.spa_routing_domains.page2", "limit", "2"),
-					resource.TestCheckResourceAttrSet("data.spa_routing_domains.page1", "total"),
-					resource.TestCheckResourceAttrSet("data.spa_routing_domains.page2", "total"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page1", "offset", "0"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page1", "limit", "2"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page2", "offset", "1"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page2", "limit", "2"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.page1", "total"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.page2", "total"),
 					// page1 must return exactly 2 items (limit=2 and >=2 domains exist)
-					resource.TestCheckResourceAttr("data.spa_routing_domains.page1", "routing_domains.#", "2"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page1", "routing_domains.#", "2"),
 					// sliding-window: page1[1] and page2[0] must be the same domain
 					resource.TestCheckResourceAttrPair(
-						"data.spa_routing_domains.page1", "routing_domains.1.fqdn",
-						"data.spa_routing_domains.page2", "routing_domains.0.fqdn",
+						"data.citrixspa_routing_domains.page1", "routing_domains.1.fqdn",
+						"data.citrixspa_routing_domains.page2", "routing_domains.0.fqdn",
 					),
 				),
 			},
@@ -370,11 +370,11 @@ func TestAccRoutingDomainsDataSource_eachItemHasFQDN(t *testing.T) {
 			{
 				Config: testAccRoutingDomainsDataSourceRequiredFieldsConfig(fqdn),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.fields_test"),
-					resource.TestCheckResourceAttrSet("data.spa_routing_domains.paged", "routing_domains.#"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.fields_test"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.paged", "routing_domains.#"),
 					// Verify first item has required fields populated
-					resource.TestCheckResourceAttrSet("data.spa_routing_domains.paged", "routing_domains.0.fqdn"),
-					resource.TestCheckResourceAttrSet("data.spa_routing_domains.paged", "routing_domains.0.type"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.paged", "routing_domains.0.fqdn"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.paged", "routing_domains.0.type"),
 				),
 			},
 		},
@@ -398,7 +398,7 @@ func TestAccRoutingDomainsDataSource_apiDirectVerification(t *testing.T) {
 			{
 				Config: testAccRoutingDomainsDataSourceWithResourceConfig(fqdn),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.ds_test"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.ds_test"),
 					// Verify via API client directly that GetRoutingDomains returns our domain
 					func(s *terraform.State) error {
 						client, err := testAccCreateClient()

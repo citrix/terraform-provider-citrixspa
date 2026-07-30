@@ -1,17 +1,17 @@
 ---
-page_title: "spa_security_groups Data Source - spa"
+page_title: "citrixspa_security_groups Data Source - citrixspa"
 description: |-
   Fetches a list of all SPA security groups.
 ---
 
-# spa_security_groups (Data Source)
+# citrixspa_security_groups (Data Source)
 
 Fetches a list of all SPA security groups, including their clipboard isolation policies and associated applications.
 
 ## Example Usage
 
 ```terraform
-data "spa_security_groups" "all" {}
+data "citrixspa_security_groups" "all" {}
 ```
 
 ## Schema

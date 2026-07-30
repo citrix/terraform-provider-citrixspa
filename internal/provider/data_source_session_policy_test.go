@@ -19,7 +19,7 @@ import (
 // and reads it back via name lookup.
 func testAccSessionPolicyDataSourceByNameConfig(policyName string) string {
 	return fmt.Sprintf(`
-resource "spa_session_policy" "ds_source" {
+resource "citrixspa_session_policy" "ds_source" {
   name        = %q
   description = "DS by-name acceptance test"
   active      = false
@@ -46,9 +46,9 @@ resource "spa_session_policy" "ds_source" {
   ]
 }
 
-data "spa_session_policy" "by_name" {
+data "citrixspa_session_policy" "by_name" {
   name       = %q
-  depends_on = [spa_session_policy.ds_source]
+  depends_on = [citrixspa_session_policy.ds_source]
 }
 `, policyName, policyName)
 }
@@ -57,7 +57,7 @@ data "spa_session_policy" "by_name" {
 // reads it back via ID lookup.
 func testAccSessionPolicyDataSourceByIDConfig(policyName string) string {
 	return fmt.Sprintf(`
-resource "spa_session_policy" "ds_source" {
+resource "citrixspa_session_policy" "ds_source" {
   name        = %q
   description = "DS by-ID acceptance test"
   active      = false
@@ -84,9 +84,9 @@ resource "spa_session_policy" "ds_source" {
   ]
 }
 
-data "spa_session_policy" "by_id" {
-  id         = spa_session_policy.ds_source.id
-  depends_on = [spa_session_policy.ds_source]
+data "citrixspa_session_policy" "by_id" {
+  id         = citrixspa_session_policy.ds_source.id
+  depends_on = [citrixspa_session_policy.ds_source]
 }
 `, policyName)
 }
@@ -95,7 +95,7 @@ data "spa_session_policy" "by_id" {
 // that does not exist and expects the data source to return an error.
 func testAccSessionPolicyDataSourceNotFoundConfig() string {
 	return `
-data "spa_session_policy" "missing" {
+data "citrixspa_session_policy" "missing" {
   name = "tf-acc-nonexistent-session-policy-should-not-exist"
 }
 `
@@ -109,7 +109,7 @@ data "spa_session_policy" "missing" {
 // reads the list so the new item is guaranteed to be present.
 func testAccSessionPoliciesDataSourceConfig(policyName string) string {
 	return fmt.Sprintf(`
-resource "spa_session_policy" "list_source" {
+resource "citrixspa_session_policy" "list_source" {
   name        = %q
   description = "DS list acceptance test"
   active      = false
@@ -136,8 +136,8 @@ resource "spa_session_policy" "list_source" {
   ]
 }
 
-data "spa_session_policies" "all" {
-  depends_on = [spa_session_policy.list_source]
+data "citrixspa_session_policies" "all" {
+  depends_on = [citrixspa_session_policy.list_source]
 }
 `, policyName)
 }
@@ -146,7 +146,7 @@ data "spa_session_policies" "all" {
 // reads the list with a name filter so exactly that policy is returned.
 func testAccSessionPoliciesDataSourceNameFilterConfig(policyName string) string {
 	return fmt.Sprintf(`
-resource "spa_session_policy" "filter_source" {
+resource "citrixspa_session_policy" "filter_source" {
   name        = %q
   description = "DS name-filter acceptance test"
   active      = false
@@ -173,9 +173,9 @@ resource "spa_session_policy" "filter_source" {
   ]
 }
 
-data "spa_session_policies" "filtered" {
+data "citrixspa_session_policies" "filtered" {
   name       = %q
-  depends_on = [spa_session_policy.filter_source]
+  depends_on = [citrixspa_session_policy.filter_source]
 }
 `, policyName, policyName)
 }
@@ -184,7 +184,7 @@ data "spa_session_policies" "filtered" {
 // reads it with explicit offset/limit parameters.
 func testAccSessionPoliciesDataSourcePaginationConfig(policyName string) string {
 	return fmt.Sprintf(`
-resource "spa_session_policy" "paged_source" {
+resource "citrixspa_session_policy" "paged_source" {
   name        = %q
   description = "DS pagination acceptance test"
   active      = false
@@ -211,10 +211,10 @@ resource "spa_session_policy" "paged_source" {
   ]
 }
 
-data "spa_session_policies" "paged" {
+data "citrixspa_session_policies" "paged" {
   offset     = 0
   limit      = 5
-  depends_on = [spa_session_policy.paged_source]
+  depends_on = [citrixspa_session_policy.paged_source]
 }
 `, policyName)
 }
@@ -241,7 +241,7 @@ func testAccCleanupSessionPolicyByNameForDS(policyName string) {
 }
 
 // =============================================================================
-// Tests — spa_session_policy data source
+// Tests — citrixspa_session_policy data source
 // =============================================================================
 
 // TestAccSessionPolicyDataSource_byName creates a session policy and reads it
@@ -260,39 +260,39 @@ func TestAccSessionPolicyDataSource_byName(t *testing.T) {
 			{
 				Config: testAccSessionPolicyDataSourceByNameConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSessionPolicyExistsInAPI("spa_session_policy.ds_source"),
+					testAccCheckSessionPolicyExistsInAPI("citrixspa_session_policy.ds_source"),
 					// id must be populated
-					resource.TestCheckResourceAttrSet("data.spa_session_policy.by_name", "id"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_session_policy.by_name", "id"),
 					// top-level scalar attributes
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_name", "name", policyName),
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_name", "description", "DS by-name acceptance test"),
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_name", "active", "false"),
-					resource.TestCheckResourceAttrSet("data.spa_session_policy.by_name", "priority"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_name", "name", policyName),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_name", "description", "DS by-name acceptance test"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_name", "active", "false"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_session_policy.by_name", "priority"),
 					// rules list must be present
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_name", "generic_rules.#", "1"),
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_name", "generic_rules.0.name", "DS Rule"),
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_name", "generic_rules.0.priority", "1"),
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_name", "generic_rules.0.active", "true"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_name", "generic_rules.#", "1"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_name", "generic_rules.0.name", "DS Rule"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_name", "generic_rules.0.priority", "1"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_name", "generic_rules.0.active", "true"),
 					// data source must match the resource
 					resource.TestCheckResourceAttrPair(
-						"data.spa_session_policy.by_name", "id",
-						"spa_session_policy.ds_source", "id",
+						"data.citrixspa_session_policy.by_name", "id",
+						"citrixspa_session_policy.ds_source", "id",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_session_policy.by_name", "name",
-						"spa_session_policy.ds_source", "name",
+						"data.citrixspa_session_policy.by_name", "name",
+						"citrixspa_session_policy.ds_source", "name",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_session_policy.by_name", "description",
-						"spa_session_policy.ds_source", "description",
+						"data.citrixspa_session_policy.by_name", "description",
+						"citrixspa_session_policy.ds_source", "description",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_session_policy.by_name", "active",
-						"spa_session_policy.ds_source", "active",
+						"data.citrixspa_session_policy.by_name", "active",
+						"citrixspa_session_policy.ds_source", "active",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_session_policy.by_name", "priority",
-						"spa_session_policy.ds_source", "priority",
+						"data.citrixspa_session_policy.by_name", "priority",
+						"citrixspa_session_policy.ds_source", "priority",
 					),
 				),
 			},
@@ -316,28 +316,28 @@ func TestAccSessionPolicyDataSource_byID(t *testing.T) {
 			{
 				Config: testAccSessionPolicyDataSourceByIDConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSessionPolicyExistsInAPI("spa_session_policy.ds_source"),
-					resource.TestCheckResourceAttrSet("data.spa_session_policy.by_id", "id"),
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_id", "name", policyName),
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_id", "description", "DS by-ID acceptance test"),
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_id", "active", "false"),
-					resource.TestCheckResourceAttrSet("data.spa_session_policy.by_id", "priority"),
-					resource.TestCheckResourceAttr("data.spa_session_policy.by_id", "generic_rules.#", "1"),
+					testAccCheckSessionPolicyExistsInAPI("citrixspa_session_policy.ds_source"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_session_policy.by_id", "id"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_id", "name", policyName),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_id", "description", "DS by-ID acceptance test"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_id", "active", "false"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_session_policy.by_id", "priority"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policy.by_id", "generic_rules.#", "1"),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_session_policy.by_id", "id",
-						"spa_session_policy.ds_source", "id",
+						"data.citrixspa_session_policy.by_id", "id",
+						"citrixspa_session_policy.ds_source", "id",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_session_policy.by_id", "name",
-						"spa_session_policy.ds_source", "name",
+						"data.citrixspa_session_policy.by_id", "name",
+						"citrixspa_session_policy.ds_source", "name",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_session_policy.by_id", "active",
-						"spa_session_policy.ds_source", "active",
+						"data.citrixspa_session_policy.by_id", "active",
+						"citrixspa_session_policy.ds_source", "active",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_session_policy.by_id", "priority",
-						"spa_session_policy.ds_source", "priority",
+						"data.citrixspa_session_policy.by_id", "priority",
+						"citrixspa_session_policy.ds_source", "priority",
 					),
 				),
 			},
@@ -361,7 +361,7 @@ func TestAccSessionPolicyDataSource_notFound(t *testing.T) {
 }
 
 // =============================================================================
-// Tests — spa_session_policies data source
+// Tests — citrixspa_session_policies data source
 // =============================================================================
 
 // TestAccSessionPoliciesDataSource_basic creates a session policy and confirms
@@ -380,8 +380,8 @@ func TestAccSessionPoliciesDataSource_basic(t *testing.T) {
 			{
 				Config: testAccSessionPoliciesDataSourceConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSessionPolicyExistsInAPI("spa_session_policy.list_source"),
-					testAccCheckSessionPoliciesListNonEmpty("data.spa_session_policies.all"),
+					testAccCheckSessionPolicyExistsInAPI("citrixspa_session_policy.list_source"),
+					testAccCheckSessionPoliciesListNonEmpty("data.citrixspa_session_policies.all"),
 				),
 			},
 		},
@@ -404,13 +404,13 @@ func TestAccSessionPoliciesDataSource_nameFilter(t *testing.T) {
 			{
 				Config: testAccSessionPoliciesDataSourceNameFilterConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSessionPolicyExistsInAPI("spa_session_policy.filter_source"),
-					resource.TestCheckResourceAttr("data.spa_session_policies.filtered", "session_policies.#", "1"),
-					resource.TestCheckResourceAttr("data.spa_session_policies.filtered", "session_policies.0.name", policyName),
-					resource.TestCheckResourceAttr("data.spa_session_policies.filtered", "session_policies.0.description", "DS name-filter acceptance test"),
-					resource.TestCheckResourceAttr("data.spa_session_policies.filtered", "session_policies.0.active", "false"),
-					resource.TestCheckResourceAttrSet("data.spa_session_policies.filtered", "session_policies.0.id"),
-					resource.TestCheckResourceAttrSet("data.spa_session_policies.filtered", "session_policies.0.priority"),
+					testAccCheckSessionPolicyExistsInAPI("citrixspa_session_policy.filter_source"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policies.filtered", "session_policies.#", "1"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policies.filtered", "session_policies.0.name", policyName),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policies.filtered", "session_policies.0.description", "DS name-filter acceptance test"),
+					resource.TestCheckResourceAttr("data.citrixspa_session_policies.filtered", "session_policies.0.active", "false"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_session_policies.filtered", "session_policies.0.id"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_session_policies.filtered", "session_policies.0.priority"),
 				),
 			},
 		},
@@ -433,16 +433,16 @@ func TestAccSessionPoliciesDataSource_pagination(t *testing.T) {
 			{
 				Config: testAccSessionPoliciesDataSourcePaginationConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSessionPolicyExistsInAPI("spa_session_policy.paged_source"),
+					testAccCheckSessionPolicyExistsInAPI("citrixspa_session_policy.paged_source"),
 					// With offset=0 and limit=5 we must get between 1 and 5 results
-					testAccCheckSessionPoliciesCountBetween("data.spa_session_policies.paged", 1, 5),
+					testAccCheckSessionPoliciesCountBetween("data.citrixspa_session_policies.paged", 1, 5),
 				),
 			},
 		},
 	})
 }
 // testAccCheckSessionPoliciesListNonEmpty verifies that the session_policies
-// list returned by a spa_session_policies data source contains at least one item.
+// list returned by a citrixspa_session_policies data source contains at least one item.
 func testAccCheckSessionPoliciesListNonEmpty(dataSourceName string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[dataSourceName]

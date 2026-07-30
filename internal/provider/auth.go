@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +29,42 @@ type AuthClient struct {
 	HTTPClient *http.Client
 }
 
+// tokenRetryBaseDelay is the base backoff for token-request retries (delay =
+// tokenRetryBaseDelay << attempt: 1s, 2s, 4s ...). It is a package-level var so
+// tests can shrink it to avoid real-time sleeps; production behavior is unchanged.
+var tokenRetryBaseDelay = time.Second
+
+// retryAfterWait resolves the delay before the next 429 retry. It honors a
+// Retry-After header — either delta-seconds ("120") or an HTTP-date — and falls
+// back to base when the header is absent or unparseable. The result is clamped
+// to [0, max]: a negative Retry-After (e.g. "-1") or a past HTTP-date never
+// yields a negative duration (which would fire the timer immediately), and an
+// oversized value is capped at max. now is passed in so the logic is testable
+// without real time.
+func retryAfterWait(header string, now time.Time, base, max time.Duration) time.Duration {
+	wait := base
+	if header != "" {
+		if secs, err := strconv.Atoi(header); err == nil {
+			// Cap before multiplying: time.Duration(secs) * time.Second would
+			// overflow int64 (and wrap negative) for values above ~9.2e9 seconds.
+			if int64(secs) > int64(max/time.Second) {
+				wait = max
+			} else {
+				wait = time.Duration(secs) * time.Second
+			}
+		} else if t, err := http.ParseTime(header); err == nil {
+			wait = t.Sub(now)
+		}
+	}
+	if wait < 0 {
+		wait = 0
+	}
+	if wait > max {
+		wait = max
+	}
+	return wait
+}
+
 // GetBearerToken obtains a bearer token using OAuth 2.0 Client Credentials Grant
 func (a *AuthClient) GetBearerToken(ctx context.Context, clientID, clientSecret string) (*OAuth2TokenResponse, error) {
 	// Construct the token endpoint URL
@@ -42,36 +80,101 @@ func (a *AuthClient) GetBearerToken(ctx context.Context, clientID, clientSecret 
 	data.Set("grant_type", "client_credentials")
 	data.Set("client_id", clientID)
 	data.Set("client_secret", clientSecret)
+	encoded := data.Encode()
 
-	// Create request
-	req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(data.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create token request: %w", err)
+	// The token endpoint is rate-limited independently of the data-plane API and
+	// occasionally returns transient 429/5xx responses under load (e.g. parallel
+	// acceptance tests). Retry those with backoff (honoring Retry-After on 429),
+	// mirroring the data-plane retry loop, so a single transient blip doesn't fail
+	// the whole operation. Non-retryable statuses (401/403/400) fail immediately.
+	const maxRetries = 3
+	const maxRetryWait = 30 * time.Second
+	var lastStatus int
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, "POST", tokenURL, strings.NewReader(encoded))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create token request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := a.HTTPClient.Do(req)
+
+		var wait time.Duration
+		switch {
+		case err != nil:
+			// Do may return a non-nil resp alongside err (e.g. redirect-policy
+			// failures); drain/close it so the connection is not leaked.
+			if resp != nil {
+				_, _ = io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+			}
+			// If the context was cancelled/expired while the request was in flight,
+			// Do surfaces that error here — return it directly instead of logging a
+			// misleading "network error, retrying" and computing a pointless backoff.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			if attempt == maxRetries {
+				return nil, fmt.Errorf("failed to obtain token: %w", err)
+			}
+			wait = tokenRetryBaseDelay << attempt
+			tflog.Warn(ctx, "spa-terraform-provider: token request failed (network error), retrying", map[string]interface{}{
+				"error": err.Error(), "attempt": attempt + 1, "max_retries": maxRetries, "wait_seconds": wait.Seconds(),
+			})
+
+		case resp.StatusCode == http.StatusOK:
+			var tokenResponse OAuth2TokenResponse
+			decodeErr := json.NewDecoder(resp.Body).Decode(&tokenResponse)
+			resp.Body.Close()
+			if decodeErr != nil {
+				return nil, fmt.Errorf("failed to parse token response: %w", decodeErr)
+			}
+			return &tokenResponse, nil
+
+		case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+			// Transient server-side condition: retry. For 429, honor Retry-After
+			// (delta-seconds or HTTP-date), clamping negatives and capping at
+			// maxRetryWait; see retryAfterWait.
+			lastStatus = resp.StatusCode
+			wait = tokenRetryBaseDelay << attempt
+			if resp.StatusCode == http.StatusTooManyRequests {
+				wait = retryAfterWait(resp.Header.Get("Retry-After"), time.Now(), wait, maxRetryWait)
+			} else if wait > maxRetryWait {
+				wait = maxRetryWait
+			}
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if attempt == maxRetries {
+				return nil, fmt.Errorf("token request failed with status %d", resp.StatusCode)
+			}
+			tflog.Warn(ctx, "spa-terraform-provider: token request rate-limited/transient error, retrying", map[string]interface{}{
+				"status": resp.StatusCode, "attempt": attempt + 1, "max_retries": maxRetries, "wait_seconds": wait.Seconds(),
+			})
+
+		default:
+			// Non-retryable status (e.g. 400/401/403): fail immediately.
+			status := resp.StatusCode
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("token request failed with status %d", status)
+		}
+
+		// Wait before the next attempt, respecting context cancellation.
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
 
-	// Set headers
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-
-	// Make the request
-	resp, err := a.HTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to obtain token: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("token request failed with status %d", resp.StatusCode)
-	}
-
-	// Parse response
-	var tokenResponse OAuth2TokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse token response: %w", err)
-	}
-
-	return &tokenResponse, nil
+	// Unreachable in practice: every switch arm returns on the final attempt
+	// (attempt == maxRetries). This return exists only because a for loop is not a
+	// terminating statement in Go, so the compiler requires one here.
+	return nil, fmt.Errorf("token request failed with status %d", lastStatus)
 }
 
 // TokenCache represents a cached token with expiration

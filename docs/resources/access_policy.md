@@ -1,10 +1,10 @@
 ---
-page_title: "spa_access_policy Resource - spa"
+page_title: "citrixspa_access_policy Resource - citrixspa"
 description: |-
   Resource for creating and managing SPA access policies.
 ---
 
-# spa_access_policy (Resource)
+# citrixspa_access_policy (Resource)
 
 Resource for creating and managing SPA access policies. Access policies control who can access applications and under what conditions, by defining access rules with conditions, restrictions, and matching rules.
 
@@ -17,14 +17,14 @@ For more details on the underlying API, see the [Access Policies API documentati
 Access policies reference applications by ID via the `apps` attribute. When managing both in the same configuration, reference the application resources directly so Terraform automatically creates them in the correct order:
 
 ```terraform
-resource "spa_access_policy" "policy" {
+resource "citrixspa_access_policy" "policy" {
   name = "My Policy"
   # ...
 
   apps = [
-    spa_application.application1.id,
-    spa_application.application2.id,
-    spa_application.application3.id,
+    citrixspa_application.application1.id,
+    citrixspa_application.application2.id,
+    citrixspa_application.application3.id,
   ]
 }
 ```
@@ -34,16 +34,16 @@ resource "spa_access_policy" "policy" {
 ## Example Usage
 
 ```terraform
-resource "spa_access_policy" "allow_developers" {
+resource "citrixspa_access_policy" "allow_developers" {
   name        = "Allow Developers"
   description = "Grant access to developer applications"
   active      = true
   priority    = 1000
 
   apps = [
-    spa_application.my_web_application.id,
-    spa_application.ztna_app.id,
-    spa_application.saas_app.id,
+    citrixspa_application.my_web_application.id,
+    citrixspa_application.ztna_app.id,
+    citrixspa_application.saas_app.id,
   ]
 
   access_rules = [
@@ -190,5 +190,5 @@ Optional:
 Import is supported using the access policy ID:
 
 ```shell
-terraform import spa_access_policy.allow_developers 00000000-0000-0000-0000-000000000000
+terraform import citrixspa_access_policy.allow_developers 00000000-0000-0000-0000-000000000000
 ```

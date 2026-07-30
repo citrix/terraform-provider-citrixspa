@@ -17,7 +17,7 @@ import (
 // applications without pagination arguments.
 func testAccApplicationsDataSourceConfig() string {
 	return `
-data "spa_applications" "all" {}
+data "citrixspa_applications" "all" {}
 `
 }
 
@@ -32,8 +32,8 @@ func testAccApplicationsDataSourceBasicConfig(name string) string {
 		url:          fmt.Sprintf("https://%s.example.com", name),
 		relatedURLs:  []string{fmt.Sprintf("*.%s.example.com", name)},
 	}) + `
-data "spa_applications" "all" {
-  depends_on = [spa_application.basic_test]
+data "citrixspa_applications" "all" {
+  depends_on = [citrixspa_application.basic_test]
 }
 `
 }
@@ -42,7 +42,7 @@ data "spa_applications" "all" {
 // reads applications with explicit offset/limit values.
 func testAccApplicationsDataSourceConfigWithPagination(offset, limit int) string {
 	return fmt.Sprintf(`
-data "spa_applications" "paged" {
+data "citrixspa_applications" "paged" {
   offset = %d
   limit  = %d
 }
@@ -61,10 +61,10 @@ func testAccApplicationsDataSourcePaginationConfig(name string) string {
 		url:          fmt.Sprintf("https://%s.example.com", name),
 		relatedURLs:  []string{fmt.Sprintf("*.%s.example.com", name)},
 	}) + `
-data "spa_applications" "paged" {
+data "citrixspa_applications" "paged" {
   offset     = 0
   limit      = 1
-  depends_on = [spa_application.pagination_test]
+  depends_on = [citrixspa_application.pagination_test]
 }
 `
 }
@@ -81,10 +81,10 @@ func testAccApplicationsDataSourceRequiredFieldsConfig(name string) string {
 		url:          fmt.Sprintf("https://%s.example.com", name),
 		relatedURLs:  []string{fmt.Sprintf("*.%s.example.com", name)},
 	}) + `
-data "spa_applications" "paged" {
+data "citrixspa_applications" "paged" {
   offset     = 0
   limit      = 5
-  depends_on = [spa_application.fields_test]
+  depends_on = [citrixspa_application.fields_test]
 }
 `
 }
@@ -109,15 +109,15 @@ func testAccApplicationsDataSourceOffsetConfig(name1, name2 string) string {
 		url:          fmt.Sprintf("https://%s.example.com", name2),
 		relatedURLs:  []string{fmt.Sprintf("*.%s.example.com", name2)},
 	}) + `
-data "spa_applications" "page1" {
+data "citrixspa_applications" "page1" {
   offset     = 0
   limit      = 2
-  depends_on = [spa_application.offset_1, spa_application.offset_2]
+  depends_on = [citrixspa_application.offset_1, citrixspa_application.offset_2]
 }
-data "spa_applications" "page2" {
+data "citrixspa_applications" "page2" {
   offset     = 1
   limit      = 2
-  depends_on = [spa_application.offset_1, spa_application.offset_2]
+  depends_on = [citrixspa_application.offset_1, citrixspa_application.offset_2]
 }
 `
 }
@@ -134,8 +134,8 @@ func testAccApplicationsDataSourceWithResourceConfig(name string) string {
 		url:          fmt.Sprintf("https://%s.example.com", name),
 		relatedURLs:  []string{fmt.Sprintf("*.%s.example.com", name)},
 	}) + `
-data "spa_applications" "all" {
-  depends_on = [spa_application.ds_test]
+data "citrixspa_applications" "all" {
+  depends_on = [citrixspa_application.ds_test]
 }
 `
 }
@@ -166,7 +166,7 @@ func testAccCleanupApplicationByName(appName string) {
 }
 
 // testAccCheckApplicationsContainsName verifies that the given application name
-// appears in the applications list returned by a spa_applications data source.
+// appears in the applications list returned by a citrixspa_applications data source.
 func testAccCheckApplicationsContainsName(dataSourceName, appName string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[dataSourceName]
@@ -237,13 +237,13 @@ func TestAccApplicationsDataSource_basic(t *testing.T) {
 				Config: testAccApplicationsDataSourceBasicConfig(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// the resource must exist in the API
-					testAccCheckApplicationExistsInAPI("spa_application.basic_test"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.basic_test"),
 					// pagination defaults are reflected in state
-					resource.TestCheckResourceAttr("data.spa_applications.all", "offset", "0"),
-					resource.TestCheckResourceAttr("data.spa_applications.all", "limit", "-1"),
+					resource.TestCheckResourceAttr("data.citrixspa_applications.all", "offset", "0"),
+					resource.TestCheckResourceAttr("data.citrixspa_applications.all", "limit", "-1"),
 					// list must be present and non-empty
-					resource.TestCheckResourceAttrSet("data.spa_applications.all", "applications.#"),
-					testAccCheckApplicationsListNonEmpty("data.spa_applications.all"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.all", "applications.#"),
+					testAccCheckApplicationsListNonEmpty("data.citrixspa_applications.all"),
 				),
 			},
 		},
@@ -267,12 +267,12 @@ func TestAccApplicationsDataSource_withResource(t *testing.T) {
 				Config: testAccApplicationsDataSourceWithResourceConfig(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// the resource must exist in the API
-					testAccCheckApplicationExistsInAPI("spa_application.ds_test"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.ds_test"),
 					// the data source must include the newly created app
-					testAccCheckApplicationsContainsName("data.spa_applications.all", name),
+					testAccCheckApplicationsContainsName("data.citrixspa_applications.all", name),
 					// list must be non-empty
-					testAccCheckApplicationsListNonEmpty("data.spa_applications.all"),
-					resource.TestCheckResourceAttrSet("data.spa_applications.all", "applications.#"),
+					testAccCheckApplicationsListNonEmpty("data.citrixspa_applications.all"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.all", "applications.#"),
 				),
 			},
 		},
@@ -296,15 +296,15 @@ func TestAccApplicationsDataSource_pagination(t *testing.T) {
 				Config: testAccApplicationsDataSourcePaginationConfig(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// the resource must exist in the API
-					testAccCheckApplicationExistsInAPI("spa_application.pagination_test"),
-					resource.TestCheckResourceAttr("data.spa_applications.paged", "offset", "0"),
-					resource.TestCheckResourceAttr("data.spa_applications.paged", "limit", "1"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.pagination_test"),
+					resource.TestCheckResourceAttr("data.citrixspa_applications.paged", "offset", "0"),
+					resource.TestCheckResourceAttr("data.citrixspa_applications.paged", "limit", "1"),
 					// exactly 1 item should come back
-					resource.TestCheckResourceAttr("data.spa_applications.paged", "applications.#", "1"),
+					resource.TestCheckResourceAttr("data.citrixspa_applications.paged", "applications.#", "1"),
 					// that one item must have required fields
-					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.id"),
-					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.name"),
-					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.type"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.paged", "applications.0.id"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.paged", "applications.0.name"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.paged", "applications.0.type"),
 				),
 			},
 		},
@@ -333,21 +333,21 @@ func TestAccApplicationsDataSource_offset(t *testing.T) {
 				Config: testAccApplicationsDataSourceOffsetConfig(name1, name2),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// both resources must exist
-					testAccCheckApplicationExistsInAPI("spa_application.offset_1"),
-					testAccCheckApplicationExistsInAPI("spa_application.offset_2"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.offset_1"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.offset_2"),
 					// pagination attributes reflected in state
-					resource.TestCheckResourceAttr("data.spa_applications.page1", "offset", "0"),
-					resource.TestCheckResourceAttr("data.spa_applications.page1", "limit", "2"),
-					resource.TestCheckResourceAttr("data.spa_applications.page2", "offset", "1"),
-					resource.TestCheckResourceAttr("data.spa_applications.page2", "limit", "2"),
+					resource.TestCheckResourceAttr("data.citrixspa_applications.page1", "offset", "0"),
+					resource.TestCheckResourceAttr("data.citrixspa_applications.page1", "limit", "2"),
+					resource.TestCheckResourceAttr("data.citrixspa_applications.page2", "offset", "1"),
+					resource.TestCheckResourceAttr("data.citrixspa_applications.page2", "limit", "2"),
 					// page1 must return exactly 2 items (limit=2 and >=2 apps exist)
-					resource.TestCheckResourceAttr("data.spa_applications.page1", "applications.#", "2"),
+					resource.TestCheckResourceAttr("data.citrixspa_applications.page1", "applications.#", "2"),
 					// page2 must return at least 1 item (offset=1 with >=2 apps)
-					testAccCheckApplicationsListNonEmpty("data.spa_applications.page2"),
+					testAccCheckApplicationsListNonEmpty("data.citrixspa_applications.page2"),
 					// sliding-window: page1[1] and page2[0] must be the same application
 					resource.TestCheckResourceAttrPair(
-						"data.spa_applications.page1", "applications.1.id",
-						"data.spa_applications.page2", "applications.0.id",
+						"data.citrixspa_applications.page1", "applications.1.id",
+						"data.citrixspa_applications.page2", "applications.0.id",
 					),
 				),
 			},
@@ -374,13 +374,13 @@ func TestAccApplicationsDataSource_eachItemHasRequiredFields(t *testing.T) {
 			{
 				Config: testAccApplicationsDataSourceRequiredFieldsConfig(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.fields_test"),
-					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.#"),
-					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.id"),
-					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.name"),
-					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.type"),
-					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.state"),
-					resource.TestCheckResourceAttrSet("data.spa_applications.paged", "applications.0.created_time"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.fields_test"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.paged", "applications.#"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.paged", "applications.0.id"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.paged", "applications.0.name"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.paged", "applications.0.type"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.paged", "applications.0.state"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_applications.paged", "applications.0.created_time"),
 				),
 			},
 		},
@@ -404,7 +404,7 @@ func TestAccApplicationsDataSource_apiDirectVerification(t *testing.T) {
 			{
 				Config: testAccApplicationsDataSourceWithResourceConfig(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.ds_test"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.ds_test"),
 					func(s *terraform.State) error {
 						client, err := testAccCreateClient()
 						if err != nil {

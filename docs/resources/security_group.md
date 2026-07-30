@@ -1,10 +1,10 @@
 ---
-page_title: "spa_security_group Resource - spa"
+page_title: "citrixspa_security_group Resource - citrixspa"
 description: |-
   Resource for creating and managing SPA security groups.
 ---
 
-# spa_security_group (Resource)
+# citrixspa_security_group (Resource)
 
 Resource for creating and managing SPA security groups. A security group defines clipboard isolation policies that control the flow of data (copy and paste) between virtual sessions and the user's local environment.
 
@@ -19,12 +19,12 @@ Each security group defines two independent clipboard policies:
 Security groups reference applications by ID via the `app_ids` attribute. When managing both in the same configuration, reference the application resources directly so Terraform automatically creates them in the correct order:
 
 ```terraform
-resource "spa_security_group" "example" {
+resource "citrixspa_security_group" "example" {
   name = "Restricted Group"
 
   app_ids = [
-    spa_application.web_app.id,
-    spa_application.saas_app.id,
+    citrixspa_application.web_app.id,
+    citrixspa_application.saas_app.id,
   ]
 
   # ...
@@ -34,12 +34,12 @@ resource "spa_security_group" "example" {
 ## Example Usage
 
 ```terraform
-resource "spa_security_group" "restricted_clipboard" {
+resource "citrixspa_security_group" "restricted_clipboard" {
   name = "Restricted Clipboard Group"
 
   app_ids = [
-    spa_application.my_web_application.id,
-    spa_application.saas_app.id,
+    citrixspa_application.my_web_application.id,
+    citrixspa_application.saas_app.id,
   ]
 
   system = {
@@ -89,5 +89,5 @@ Required:
 Import is supported using the security group ID:
 
 ```shell
-terraform import spa_security_group.restricted_clipboard 00000000-0000-0000-0000-000000000000
+terraform import citrixspa_security_group.restricted_clipboard 00000000-0000-0000-0000-000000000000
 ```

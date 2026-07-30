@@ -42,10 +42,10 @@ type testAppConfig struct {
 	sso             string // HCL value for the sso attribute, e.g. `{ type = "nosso" }`
 	state           string // "incomplete" or "complete"; omitted if empty
 	destinations    []testDestination
-	dependsOn       []string // HCL resource addresses for depends_on, e.g. ["spa_routing_domain.foo"]
+	dependsOn       []string // HCL resource addresses for depends_on, e.g. ["citrixspa_routing_domain.foo"]
 }
 
-// testAccApplicationConfig generates a Terraform HCL config for a spa_application resource.
+// testAccApplicationConfig generates a Terraform HCL config for a citrixspa_application resource.
 func testAccApplicationConfig(cfg testAppConfig) string {
 	if cfg.icon == "" {
 		cfg.icon = testAppIcon
@@ -55,7 +55,7 @@ func testAccApplicationConfig(cfg testAppConfig) string {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "resource \"spa_application\" %q {\n", cfg.resourceName)
+	fmt.Fprintf(&b, "resource \"citrixspa_application\" %q {\n", cfg.resourceName)
 	fmt.Fprintf(&b, "  name             = %q\n", cfg.name)
 	fmt.Fprintf(&b, "  type             = %q\n", cfg.appType)
 	if cfg.description != "" {
@@ -121,7 +121,7 @@ func testAccCheckApplicationDestroy(s *terraform.State) error {
 	ctx := context.Background()
 
 	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "spa_application" {
+		if rs.Type != "citrixspa_application" {
 			continue
 		}
 
@@ -170,6 +170,16 @@ func testAccCheckApplicationExistsInAPI(resourceName string) resource.TestCheckF
 func TestAccApplication_web(t *testing.T) {
 	name := "tf-acc-test-web-app"
 	fqdn := fmt.Sprintf("%s.example.com", name)
+	// Shared create config, reused by the create and idempotency steps so they
+	// stay identical (the idempotency step must re-apply the SAME config).
+	createConfig := testAccApplicationConfig(testAppConfig{
+		resourceName: "test_web",
+		name:         name,
+		appType:      "web",
+		description:  "Terraform acceptance test - web application",
+		url:          fmt.Sprintf("https://%s", fqdn),
+		relatedURLs:  []string{"*.example.com"},
+	})
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -177,32 +187,30 @@ func TestAccApplication_web(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Step 1: Create
 			{
-				Config: testAccApplicationConfig(testAppConfig{
-					resourceName: "test_web",
-					name:         name,
-					appType:      "web",
-					description:  "Terraform acceptance test - web application",
-					url:          fmt.Sprintf("https://%s", fqdn),
-					relatedURLs:  []string{"*.example.com"},
-				}),
+				Config: createConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.test_web"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "name", name),
-					resource.TestCheckResourceAttr("spa_application.test_web", "type", "web"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "description", "Terraform acceptance test - web application"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "url", fmt.Sprintf("https://%s", fqdn)),
-					resource.TestCheckResourceAttr("spa_application.test_web", "hidden", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "agentless_access", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "mobile_security", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "sbs_only_launch", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "using_template", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "related_urls.#", "1"),
-					resource.TestCheckTypeSetElemAttr("spa_application.test_web", "related_urls.*", "*.example.com"),
-					resource.TestCheckResourceAttrSet("spa_application.test_web", "id"),
-					resource.TestCheckResourceAttrSet("spa_application.test_web", "state"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.test_web"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "type", "web"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "description", "Terraform acceptance test - web application"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "url", fmt.Sprintf("https://%s", fqdn)),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "hidden", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "agentless_access", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "mobile_security", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "sbs_only_launch", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "using_template", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "related_urls.#", "1"),
+					resource.TestCheckTypeSetElemAttr("citrixspa_application.test_web", "related_urls.*", "*.example.com"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_web", "id"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_web", "state"),
 				),
 			},
-			// Step 2: Update — change description, add a keyword, set hidden=true
+			// Step 2: Idempotency — re-applying the create config yields an empty plan
+			{
+				Config:   createConfig,
+				PlanOnly: true,
+			},
+			// Step 3: Update — change description, add a keyword, set hidden=true
 			{
 				Config: testAccApplicationConfig(testAppConfig{
 					resourceName: "test_web",
@@ -215,28 +223,28 @@ func TestAccApplication_web(t *testing.T) {
 					keywords:     []string{"acceptance-test"},
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.test_web"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "name", name),
-					resource.TestCheckResourceAttr("spa_application.test_web", "type", "web"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "description", "Terraform acceptance test - web application UPDATED"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "url", fmt.Sprintf("https://%s", fqdn)),
-					resource.TestCheckResourceAttr("spa_application.test_web", "hidden", "true"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "agentless_access", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "mobile_security", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "sbs_only_launch", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "using_template", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_web", "related_urls.#", "2"),
-					resource.TestCheckTypeSetElemAttr("spa_application.test_web", "related_urls.*", "*.example.com"),
-					resource.TestCheckTypeSetElemAttr("spa_application.test_web", "related_urls.*", fmt.Sprintf("api.%s", fqdn)),
-					resource.TestCheckResourceAttr("spa_application.test_web", "keywords.#", "1"),
-					resource.TestCheckTypeSetElemAttr("spa_application.test_web", "keywords.*", "acceptance-test"),
-					resource.TestCheckResourceAttrSet("spa_application.test_web", "id"),
-					resource.TestCheckResourceAttrSet("spa_application.test_web", "state"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.test_web"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "type", "web"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "description", "Terraform acceptance test - web application UPDATED"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "url", fmt.Sprintf("https://%s", fqdn)),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "hidden", "true"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "agentless_access", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "mobile_security", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "sbs_only_launch", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "using_template", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "related_urls.#", "2"),
+					resource.TestCheckTypeSetElemAttr("citrixspa_application.test_web", "related_urls.*", "*.example.com"),
+					resource.TestCheckTypeSetElemAttr("citrixspa_application.test_web", "related_urls.*", fmt.Sprintf("api.%s", fqdn)),
+					resource.TestCheckResourceAttr("citrixspa_application.test_web", "keywords.#", "1"),
+					resource.TestCheckTypeSetElemAttr("citrixspa_application.test_web", "keywords.*", "acceptance-test"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_web", "id"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_web", "state"),
 				),
 			},
-			// Step 3: ImportState — verify the resource can be imported by ID
+			// Step 4: ImportState — verify the resource can be imported by ID
 			{
-				ResourceName:      "spa_application.test_web",
+				ResourceName:      "citrixspa_application.test_web",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -268,23 +276,23 @@ func TestAccApplication_saas(t *testing.T) {
 					sso:             `{ type = "nosso" }`,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.test_saas"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "name", name),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "type", "saas"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "description", "Terraform acceptance test - SaaS application"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "url", fmt.Sprintf("https://%s", fqdn)),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "hidden", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "agentless_access", "true"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "mobile_security", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "sbs_only_launch", "true"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "using_template", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "related_urls.#", "1"),
-					resource.TestCheckTypeSetElemAttr("spa_application.test_saas", "related_urls.*", fmt.Sprintf("*.%s", fqdn)),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "keywords.#", "1"),
-					resource.TestCheckTypeSetElemAttr("spa_application.test_saas", "keywords.*", "acceptance-test"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "sso.type", "nosso"),
-					resource.TestCheckResourceAttrSet("spa_application.test_saas", "id"),
-					resource.TestCheckResourceAttrSet("spa_application.test_saas", "state"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.test_saas"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "type", "saas"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "description", "Terraform acceptance test - SaaS application"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "url", fmt.Sprintf("https://%s", fqdn)),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "hidden", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "agentless_access", "true"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "mobile_security", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "sbs_only_launch", "true"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "using_template", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "related_urls.#", "1"),
+					resource.TestCheckTypeSetElemAttr("citrixspa_application.test_saas", "related_urls.*", fmt.Sprintf("*.%s", fqdn)),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "keywords.#", "1"),
+					resource.TestCheckTypeSetElemAttr("citrixspa_application.test_saas", "keywords.*", "acceptance-test"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "sso.type", "nosso"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_saas", "id"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_saas", "state"),
 				),
 			},
 			// Step 2: Update — change description, add a keyword, set hidden=true, add a related URL
@@ -303,30 +311,30 @@ func TestAccApplication_saas(t *testing.T) {
 					sso:             `{ type = "nosso" }`,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.test_saas"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "name", name),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "type", "saas"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "description", "Terraform acceptance test - SaaS application UPDATED"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "url", fmt.Sprintf("https://%s", fqdn)),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "hidden", "true"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "agentless_access", "true"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "mobile_security", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "sbs_only_launch", "true"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "using_template", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "related_urls.#", "2"),
-					resource.TestCheckTypeSetElemAttr("spa_application.test_saas", "related_urls.*", fmt.Sprintf("*.%s", fqdn)),
-					resource.TestCheckTypeSetElemAttr("spa_application.test_saas", "related_urls.*", fmt.Sprintf("api.%s", fqdn)),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "keywords.#", "2"),
-					resource.TestCheckTypeSetElemAttr("spa_application.test_saas", "keywords.*", "acceptance-test"),
-					resource.TestCheckTypeSetElemAttr("spa_application.test_saas", "keywords.*", "updated"),
-					resource.TestCheckResourceAttr("spa_application.test_saas", "sso.type", "nosso"),
-					resource.TestCheckResourceAttrSet("spa_application.test_saas", "id"),
-					resource.TestCheckResourceAttrSet("spa_application.test_saas", "state"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.test_saas"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "type", "saas"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "description", "Terraform acceptance test - SaaS application UPDATED"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "url", fmt.Sprintf("https://%s", fqdn)),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "hidden", "true"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "agentless_access", "true"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "mobile_security", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "sbs_only_launch", "true"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "using_template", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "related_urls.#", "2"),
+					resource.TestCheckTypeSetElemAttr("citrixspa_application.test_saas", "related_urls.*", fmt.Sprintf("*.%s", fqdn)),
+					resource.TestCheckTypeSetElemAttr("citrixspa_application.test_saas", "related_urls.*", fmt.Sprintf("api.%s", fqdn)),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "keywords.#", "2"),
+					resource.TestCheckTypeSetElemAttr("citrixspa_application.test_saas", "keywords.*", "acceptance-test"),
+					resource.TestCheckTypeSetElemAttr("citrixspa_application.test_saas", "keywords.*", "updated"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saas", "sso.type", "nosso"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_saas", "id"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_saas", "state"),
 				),
 			},
 			// Step 3: ImportState — verify the resource can be imported by ID
 			{
-				ResourceName:      "spa_application.test_saas",
+				ResourceName:      "citrixspa_application.test_saas",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -360,22 +368,22 @@ func TestAccApplication_ztna(t *testing.T) {
 					},
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.test_ztna"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "name", name),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "type", "ztna"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "description", "Terraform acceptance test - ZTNA application"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "hidden", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "agentless_access", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "mobile_security", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "sbs_only_launch", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "using_template", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "destination.#", "1"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "destination.0.destination", fqdn),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "destination.0.port", "443"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "destination.0.protocol", "PROTOCOL_TCP"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "destination.0.subtype", "SUBTYPE_HOSTNAME"),
-					resource.TestCheckResourceAttrSet("spa_application.test_ztna", "id"),
-					resource.TestCheckResourceAttrSet("spa_application.test_ztna", "state"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.test_ztna"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "type", "ztna"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "description", "Terraform acceptance test - ZTNA application"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "hidden", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "agentless_access", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "mobile_security", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "sbs_only_launch", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "using_template", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "destination.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "destination.0.destination", fqdn),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "destination.0.port", "443"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "destination.0.protocol", "PROTOCOL_TCP"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "destination.0.subtype", "SUBTYPE_HOSTNAME"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_ztna", "id"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_ztna", "state"),
 				),
 			},
 			// Step 2: Update — change description and add a second destination
@@ -401,23 +409,23 @@ func TestAccApplication_ztna(t *testing.T) {
 					},
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.test_ztna"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "name", name),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "type", "ztna"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "description", "Terraform acceptance test - ZTNA application UPDATED"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "hidden", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "agentless_access", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "mobile_security", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "sbs_only_launch", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "using_template", "false"),
-					resource.TestCheckResourceAttr("spa_application.test_ztna", "destination.#", "2"),
-					resource.TestCheckResourceAttrSet("spa_application.test_ztna", "id"),
-					resource.TestCheckResourceAttrSet("spa_application.test_ztna", "state"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.test_ztna"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "type", "ztna"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "description", "Terraform acceptance test - ZTNA application UPDATED"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "hidden", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "agentless_access", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "mobile_security", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "sbs_only_launch", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "using_template", "false"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_ztna", "destination.#", "2"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_ztna", "id"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_ztna", "state"),
 				),
 			},
 			// Step 3: ImportState — verify the resource can be imported by ID
 			{
-				ResourceName:      "spa_application.test_ztna",
+				ResourceName:      "citrixspa_application.test_ztna",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -460,16 +468,16 @@ func TestAccApplication_samlSSO(t *testing.T) {
 					}`,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.test_saml"),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "name", name),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "type", "saas"),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.type", "saml"),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.assertion_url", "https://sp.example.com/acs"),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.audience", "https://sp.example.com"),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.name_id_format", "emailAddress"),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.name_id_source", "email"),
-					resource.TestCheckResourceAttrSet("spa_application.test_saml", "id"),
-					resource.TestCheckResourceAttrSet("spa_application.test_saml", "state"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.test_saml"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "type", "saas"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "sso.type", "saml"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "sso.assertion_url", "https://sp.example.com/acs"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "sso.audience", "https://sp.example.com"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "sso.name_id_format", "emailAddress"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "sso.name_id_source", "email"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_saml", "id"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_saml", "state"),
 				),
 			},
 			// Step 2: Update — change assertion_url
@@ -491,18 +499,18 @@ func TestAccApplication_samlSSO(t *testing.T) {
 					}`,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.test_saml"),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "name", name),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "description", "Terraform acceptance test - SAML SSO application UPDATED"),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.type", "saml"),
-					resource.TestCheckResourceAttr("spa_application.test_saml", "sso.assertion_url", "https://sp.example.com/acs/v2"),
-					resource.TestCheckResourceAttrSet("spa_application.test_saml", "id"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.test_saml"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "description", "Terraform acceptance test - SAML SSO application UPDATED"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "sso.type", "saml"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml", "sso.assertion_url", "https://sp.example.com/acs/v2"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_saml", "id"),
 				),
 			},
 			// Step 3: ImportState — with SingleNestedAttribute the SSO shape is
 			// fixed, so import now works without ignoring the sso field.
 			{
-				ResourceName:      "spa_application.test_saml",
+				ResourceName:      "citrixspa_application.test_saml",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -540,13 +548,13 @@ func TestAccApplication_samlSSOComputedFieldsPopulated(t *testing.T) {
 					}`,
 				}),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckApplicationExistsInAPI("spa_application.test_saml_computed"),
-					resource.TestCheckResourceAttr("spa_application.test_saml_computed", "name", name),
-					resource.TestCheckResourceAttr("spa_application.test_saml_computed", "sso.type", "saml"),
-					resource.TestCheckResourceAttr("spa_application.test_saml_computed", "sso.assertion_url", "https://sp.example.com/acs"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.test_saml_computed"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml_computed", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml_computed", "sso.type", "saml"),
+					resource.TestCheckResourceAttr("citrixspa_application.test_saml_computed", "sso.assertion_url", "https://sp.example.com/acs"),
 					// Server-computed fields should be populated
-					resource.TestCheckResourceAttrSet("spa_application.test_saml_computed", "sso.saml_sso_login_url"),
-					resource.TestCheckResourceAttrSet("spa_application.test_saml_computed", "id"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_saml_computed", "sso.saml_sso_login_url"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.test_saml_computed", "id"),
 				),
 			},
 		},

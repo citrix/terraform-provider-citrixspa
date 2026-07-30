@@ -18,21 +18,21 @@ import (
 type testSecurityGroupConfig struct {
 	resourceName   string   // HCL resource label
 	name           string   // security group display name
-	appRefs        []string // HCL references for app_ids, e.g. "spa_application.app1.id"
+	appRefs        []string // HCL references for app_ids, e.g. "citrixspa_application.app1.id"
 	systemIn       string   // "enabled" or "disabled"
 	systemOut      string
 	unpublishedIn  string
 	unpublishedOut string
 }
 
-// testAccSecurityGroupConfig generates HCL for a spa_security_group resource.
+// testAccSecurityGroupConfig generates HCL for a citrixspa_security_group resource.
 func testAccSecurityGroupConfig(cfg testSecurityGroupConfig) string {
 	if cfg.resourceName == "" {
 		cfg.resourceName = "test"
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "resource \"spa_security_group\" %q {\n", cfg.resourceName)
+	fmt.Fprintf(&b, "resource \"citrixspa_security_group\" %q {\n", cfg.resourceName)
 	fmt.Fprintf(&b, "  name = %q\n", cfg.name)
 
 	// app_ids
@@ -79,12 +79,12 @@ func testAccSecurityGroupPrereqAppConfig(resourceName, appName string) string {
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{relatedFQDN},
 		state:        "complete",
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName, "spa_routing_domain." + rdRelatedResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName, "citrixspa_routing_domain." + rdRelatedResourceName},
 	})
 	return rdConfig + rdRelatedConfig + appConfig
 }
 
-// testAccCheckSecurityGroupDestroy verifies that all spa_security_group
+// testAccCheckSecurityGroupDestroy verifies that all citrixspa_security_group
 // resources have been removed from the API after a test run.
 func testAccCheckSecurityGroupDestroy(s *terraform.State) error {
 	client, err := testAccCreateClient()
@@ -94,7 +94,7 @@ func testAccCheckSecurityGroupDestroy(s *terraform.State) error {
 	ctx := context.Background()
 
 	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "spa_security_group" {
+		if rs.Type != "citrixspa_security_group" {
 			continue
 		}
 		id := rs.Primary.Attributes["id"]
@@ -173,7 +173,19 @@ func TestAccSecurityGroup_basic(t *testing.T) {
 	appName := "tf-acc-test-sg-basic-app"
 
 	appHCL := testAccSecurityGroupPrereqAppConfig("sg_app", appName)
-	resAddr := "spa_security_group.test_sg"
+	resAddr := "citrixspa_security_group.test_sg"
+
+	// Shared create config, reused by the create and idempotency steps so they
+	// stay identical (the idempotency step must re-apply the SAME config).
+	createConfig := appHCL + testAccSecurityGroupConfig(testSecurityGroupConfig{
+		resourceName:   "test_sg",
+		name:           sgName,
+		appRefs:        []string{"citrixspa_application.sg_app.id"},
+		systemIn:       "enabled",
+		systemOut:      "disabled",
+		unpublishedIn:  "disabled",
+		unpublishedOut: "disabled",
+	})
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -193,15 +205,7 @@ func TestAccSecurityGroup_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Step 1: Create
 			{
-				Config: appHCL + testAccSecurityGroupConfig(testSecurityGroupConfig{
-					resourceName:   "test_sg",
-					name:           sgName,
-					appRefs:        []string{"spa_application.sg_app.id"},
-					systemIn:       "enabled",
-					systemOut:      "disabled",
-					unpublishedIn:  "disabled",
-					unpublishedOut: "disabled",
-				}),
+				Config: createConfig,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testAccCheckSecurityGroupExistsInAPI(resAddr),
 					resource.TestCheckResourceAttr(resAddr, "name", sgName),
@@ -214,12 +218,17 @@ func TestAccSecurityGroup_basic(t *testing.T) {
 					resource.TestCheckResourceAttrSet(resAddr, "modified"),
 				),
 			},
-			// Step 2: Update — change name and flip system.data_out
+			// Step 2: Idempotency — re-applying the create config yields an empty plan
+			{
+				Config:   createConfig,
+				PlanOnly: true,
+			},
+			// Step 3: Update — change name and flip system.data_out
 			{
 				Config: appHCL + testAccSecurityGroupConfig(testSecurityGroupConfig{
 					resourceName:   "test_sg",
 					name:           sgName + "-updated",
-					appRefs:        []string{"spa_application.sg_app.id"},
+					appRefs:        []string{"citrixspa_application.sg_app.id"},
 					systemIn:       "enabled",
 					systemOut:      "enabled",
 					unpublishedIn:  "disabled",
@@ -235,7 +244,7 @@ func TestAccSecurityGroup_basic(t *testing.T) {
 					resource.TestCheckResourceAttrSet(resAddr, "id"),
 				),
 			},
-			// Step 3: ImportState
+			// Step 4: ImportState
 			{
 				ResourceName:      resAddr,
 				ImportState:       true,
@@ -255,7 +264,7 @@ func TestAccSecurityGroup_updateApps(t *testing.T) {
 
 	app1HCL := testAccSecurityGroupPrereqAppConfig("sg_app1", app1Name)
 	app2HCL := testAccSecurityGroupPrereqAppConfig("sg_app2", app2Name)
-	resAddr := "spa_security_group.test_sg"
+	resAddr := "citrixspa_security_group.test_sg"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -280,7 +289,7 @@ func TestAccSecurityGroup_updateApps(t *testing.T) {
 				Config: app1HCL + app2HCL + testAccSecurityGroupConfig(testSecurityGroupConfig{
 					resourceName:   "test_sg",
 					name:           sgName,
-					appRefs:        []string{"spa_application.sg_app1.id"},
+					appRefs:        []string{"citrixspa_application.sg_app1.id"},
 					systemIn:       "enabled",
 					systemOut:      "enabled",
 					unpublishedIn:  "enabled",
@@ -297,7 +306,7 @@ func TestAccSecurityGroup_updateApps(t *testing.T) {
 				Config: app1HCL + app2HCL + testAccSecurityGroupConfig(testSecurityGroupConfig{
 					resourceName:   "test_sg",
 					name:           sgName,
-					appRefs:        []string{"spa_application.sg_app1.id", "spa_application.sg_app2.id"},
+					appRefs:        []string{"citrixspa_application.sg_app1.id", "citrixspa_application.sg_app2.id"},
 					systemIn:       "enabled",
 					systemOut:      "enabled",
 					unpublishedIn:  "enabled",

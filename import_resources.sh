@@ -18,8 +18,8 @@ print_debug() {
 }
 
 print_status "Importing browser mode configuration"
-print_debug "Running: terraform import spa_browser_mode.browser_mode browser_mode"
-terraform import spa_browser_mode.browser_mode browser_mode || print_error "Failed to import browser mode"
+print_debug "Running: terraform import citrixspa_browser_mode.browser_mode browser_mode"
+terraform import citrixspa_browser_mode.browser_mode browser_mode || print_error "Failed to import browser mode"
 
 print_status "Import script completed"
 print_status "Run 'terraform plan' to verify the imported resources"

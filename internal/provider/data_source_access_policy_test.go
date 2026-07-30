@@ -33,7 +33,7 @@ func testAccAccessPolicyDataSourceByNameConfig(policyName string) string {
 		description:  "DS policy acceptance test app",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -47,9 +47,9 @@ func testAccAccessPolicyDataSourceByNameConfig(policyName string) string {
 	})
 
 	dataSourceConfig := fmt.Sprintf(`
-data "spa_access_policy" "by_name" {
+data "citrixspa_access_policy" "by_name" {
   name       = %q
-  depends_on = [spa_access_policy.ds_policy]
+  depends_on = [citrixspa_access_policy.ds_policy]
 }
 `, policyName)
 
@@ -75,7 +75,7 @@ func testAccAccessPolicyDataSourceByIDConfig(policyName string) string {
 		description:  "DS policy by-ID acceptance test app",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -89,9 +89,9 @@ func testAccAccessPolicyDataSourceByIDConfig(policyName string) string {
 	})
 
 	dataSourceConfig := `
-data "spa_access_policy" "by_id" {
-  id         = spa_access_policy.ds_policy.id
-  depends_on = [spa_access_policy.ds_policy]
+data "citrixspa_access_policy" "by_id" {
+  id         = citrixspa_access_policy.ds_policy.id
+  depends_on = [citrixspa_access_policy.ds_policy]
 }
 `
 	return rdConfig + appConfig + policyConfig + dataSourceConfig
@@ -116,7 +116,7 @@ func testAccAccessPolicyDataSourceUpdatedConfig(policyName, description string, 
 		description:  "DS policy acceptance test app",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -130,9 +130,9 @@ func testAccAccessPolicyDataSourceUpdatedConfig(policyName, description string, 
 	})
 
 	dataSourceConfig := fmt.Sprintf(`
-data "spa_access_policy" "by_name" {
+data "citrixspa_access_policy" "by_name" {
   name       = %q
-  depends_on = [spa_access_policy.ds_policy]
+  depends_on = [citrixspa_access_policy.ds_policy]
 }
 `, policyName)
 
@@ -143,7 +143,7 @@ data "spa_access_policy" "by_name" {
 // should never exist.
 func testAccAccessPolicyDataSourceNotFoundConfig() string {
 	return `
-data "spa_access_policy" "missing" {
+data "citrixspa_access_policy" "missing" {
   name = "tf-acc-nonexistent-policy-should-not-exist"
 }
 `
@@ -197,40 +197,40 @@ func TestAccAccessPolicyDataSource_byName(t *testing.T) {
 			{
 				Config: testAccAccessPolicyDataSourceByNameConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.ds_policy"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.ds_policy"),
 					// id must be populated
-					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_name", "id"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policy.by_name", "id"),
 					// top-level scalar attributes
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "name", policyName),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "description", "DS by-name acceptance test"),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "active", "false"),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "priority", "990"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "name", policyName),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "description", "DS by-name acceptance test"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "active", "false"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "priority", "990"),
 					// apps set must be non-empty
-					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_name", "apps.#"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policy.by_name", "apps.#"),
 					// access_rules list must be present
-					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_name", "access_rules.#"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policy.by_name", "access_rules.#"),
 					// modified must be populated
-					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_name", "modified"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policy.by_name", "modified"),
 					// data source must match the resource
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_name", "id",
-						"spa_access_policy.ds_policy", "id",
+						"data.citrixspa_access_policy.by_name", "id",
+						"citrixspa_access_policy.ds_policy", "id",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_name", "name",
-						"spa_access_policy.ds_policy", "name",
+						"data.citrixspa_access_policy.by_name", "name",
+						"citrixspa_access_policy.ds_policy", "name",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_name", "description",
-						"spa_access_policy.ds_policy", "description",
+						"data.citrixspa_access_policy.by_name", "description",
+						"citrixspa_access_policy.ds_policy", "description",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_name", "active",
-						"spa_access_policy.ds_policy", "active",
+						"data.citrixspa_access_policy.by_name", "active",
+						"citrixspa_access_policy.ds_policy", "active",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_name", "priority",
-						"spa_access_policy.ds_policy", "priority",
+						"data.citrixspa_access_policy.by_name", "priority",
+						"citrixspa_access_policy.ds_policy", "priority",
 					),
 				),
 			},
@@ -258,30 +258,30 @@ func TestAccAccessPolicyDataSource_byID(t *testing.T) {
 			{
 				Config: testAccAccessPolicyDataSourceByIDConfig(policyName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.ds_policy"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_id", "id"),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_id", "name", policyName),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_id", "description", "DS by-ID acceptance test"),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_id", "active", "false"),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_id", "priority", "989"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_id", "apps.#"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_id", "access_rules.#"),
-					resource.TestCheckResourceAttrSet("data.spa_access_policy.by_id", "modified"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.ds_policy"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policy.by_id", "id"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_id", "name", policyName),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_id", "description", "DS by-ID acceptance test"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_id", "active", "false"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_id", "priority", "989"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policy.by_id", "apps.#"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policy.by_id", "access_rules.#"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_access_policy.by_id", "modified"),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_id", "id",
-						"spa_access_policy.ds_policy", "id",
+						"data.citrixspa_access_policy.by_id", "id",
+						"citrixspa_access_policy.ds_policy", "id",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_id", "name",
-						"spa_access_policy.ds_policy", "name",
+						"data.citrixspa_access_policy.by_id", "name",
+						"citrixspa_access_policy.ds_policy", "name",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_id", "active",
-						"spa_access_policy.ds_policy", "active",
+						"data.citrixspa_access_policy.by_id", "active",
+						"citrixspa_access_policy.ds_policy", "active",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_id", "priority",
-						"spa_access_policy.ds_policy", "priority",
+						"data.citrixspa_access_policy.by_id", "priority",
+						"citrixspa_access_policy.ds_policy", "priority",
 					),
 				),
 			},
@@ -310,31 +310,31 @@ func TestAccAccessPolicyDataSource_reflectsUpdate(t *testing.T) {
 			{
 				Config: testAccAccessPolicyDataSourceUpdatedConfig(policyName, "initial description", false, 985),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "name", policyName),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "description", "initial description"),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "active", "false"),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "priority", "985"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "name", policyName),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "description", "initial description"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "active", "false"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "priority", "985"),
 				),
 			},
 			// Step 2: update description, active and priority; data source must reflect changes
 			{
 				Config: testAccAccessPolicyDataSourceUpdatedConfig(policyName, "updated description", true, 984),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "name", policyName),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "description", "updated description"),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "active", "true"),
-					resource.TestCheckResourceAttr("data.spa_access_policy.by_name", "priority", "984"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "name", policyName),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "description", "updated description"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "active", "true"),
+					resource.TestCheckResourceAttr("data.citrixspa_access_policy.by_name", "priority", "984"),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_name", "description",
-						"spa_access_policy.ds_policy", "description",
+						"data.citrixspa_access_policy.by_name", "description",
+						"citrixspa_access_policy.ds_policy", "description",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_name", "active",
-						"spa_access_policy.ds_policy", "active",
+						"data.citrixspa_access_policy.by_name", "active",
+						"citrixspa_access_policy.ds_policy", "active",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_access_policy.by_name", "priority",
-						"spa_access_policy.ds_policy", "priority",
+						"data.citrixspa_access_policy.by_name", "priority",
+						"citrixspa_access_policy.ds_policy", "priority",
 					),
 				),
 			},

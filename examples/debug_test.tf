@@ -1,13 +1,13 @@
 # Test configuration for debug logging
 terraform {
   required_providers {
-    spa = {
+    citrixspa = {
       source = "local/spa"
     }
   }
 }
 
-provider "spa" {
+provider "citrixspa" {
   base_url    = "https://api.cloud.com"
   customer_id = "test-customer"
   auth_token  = "test-token"
@@ -15,7 +15,7 @@ provider "spa" {
 }
 
 # Test resource for import
-resource "spa_application" "debug_test" {
+resource "citrixspa_application" "debug_test" {
   name = "Debug Test Application"
   type = "web"
 }

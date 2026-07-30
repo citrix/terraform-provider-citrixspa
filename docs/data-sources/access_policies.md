@@ -1,10 +1,10 @@
 ---
-page_title: "spa_access_policies Data Source - spa"
+page_title: "citrixspa_access_policies Data Source - citrixspa"
 description: |-
   Fetches a list of all SPA access policies.
 ---
 
-# spa_access_policies (Data Source)
+# citrixspa_access_policies (Data Source)
 
 Fetches a paginated list of all SPA access policies, including their access rules.
 
@@ -14,10 +14,10 @@ For more details on the underlying API, see the [Access Policies API documentati
 
 ```terraform
 # Fetch all access policies
-data "spa_access_policies" "all" {}
+data "citrixspa_access_policies" "all" {}
 
 # Fetch with filters and pagination
-data "spa_access_policies" "filtered" {
+data "citrixspa_access_policies" "filtered" {
   name    = "Allow"
   orderby = "name"
   offset  = 0

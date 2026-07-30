@@ -1,0 +1,179 @@
+# End-to-End (E2E) tests — PUBLIC repo.
+#
+# Triggers:
+#   - workflow_dispatch : manual, choose a scenario
+#   - workflow_call     : reusable, so release.yml can gate on E2E
+#   (NO push trigger in the public repo.)
+#
+# Scenarios (input `scenario`): all | golden | tooling | migrate | tests
+#
+# Requires the two dedicated E2E tenants as secrets:
+#   Customer A: CITRIX_CUSTOMER_ID   / CITRIX_CLIENT_ID   / CITRIX_CLIENT_SECRET
+#   Customer B: CITRIX_CUSTOMER_ID_B / CITRIX_CLIENT_ID_B / CITRIX_CLIENT_SECRET_B
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Which E2E scenario to run"
+        type: choice
+        default: "all"
+        options: [all, golden, tooling, migrate, tests]
+      keep_resources:
+        description: "Skip teardown (debugging only)"
+        type: boolean
+        default: false
+      force_wipe_tenant_b:
+        description: "migrate: wipe Customer B even if it exceeds the safety threshold"
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      scenario:
+        description: "Which E2E scenario to run"
+        type: string
+        default: "all"
+    secrets:
+      # Customer A is required for every scenario.
+      CITRIX_CUSTOMER_ID: { required: true }
+      CITRIX_CLIENT_ID: { required: true }
+      CITRIX_CLIENT_SECRET: { required: true }
+      # Customer B is only used by the `migrate` scenario. Keep it optional so
+      # callers running golden/tooling/tests need not configure it; the migrate
+      # job guards for its presence and fails fast if missing.
+      CITRIX_CUSTOMER_ID_B: { required: false }
+      CITRIX_CLIENT_ID_B: { required: false }
+      CITRIX_CLIENT_SECRET_B: { required: false }
+
+permissions:
+  contents: read
+
+# Serialize ALL E2E runs repo-wide: every run shares the Customer A/B tenants
+# (migrate even wipes tenant B), so only one run may touch them at a time,
+# regardless of branch/tag. Queue rather than cancel to avoid interrupting a
+# run mid-provision/teardown.
+concurrency:
+  group: e2e-shared-tenants
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      scenario: ${{ steps.s.outputs.scenario }}
+    steps:
+      - id: s
+        run: echo "scenario=${{ inputs.scenario || 'all' }}" >> "$GITHUB_OUTPUT"
+
+  tests:
+    name: Unit + Acceptance
+    needs: setup
+    if: ${{ needs.setup.outputs.scenario == 'all' || needs.setup.outputs.scenario == 'tests' }}
+    runs-on: ubuntu-latest
+    env:
+      CITRIX_CUSTOMER_ID: ${{ secrets.CITRIX_CUSTOMER_ID }}
+      CITRIX_CLIENT_ID: ${{ secrets.CITRIX_CLIENT_ID }}
+      CITRIX_CLIENT_SECRET: ${{ secrets.CITRIX_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+      - name: Run tests scenario
+        run: ./run-tests.sh
+        working-directory: e2e
+
+  golden:
+    name: Golden drift check
+    # Tenant-touching scenarios are serialized (tests -> golden -> tooling ->
+    # migrate) so a `scenario=all` run never has two jobs mutating the shared
+    # Customer A/B tenants at once (the repo-wide concurrency group only
+    # serializes across runs, not jobs within one run). `!failure() &&
+    # !cancelled()` lets each job still run standalone when the upstream
+    # scenarios are skipped, while stopping the chain if an upstream fails.
+    needs: [setup, tests]
+    if: ${{ !failure() && !cancelled() && (needs.setup.outputs.scenario == 'all' || needs.setup.outputs.scenario == 'golden') }}
+    runs-on: ubuntu-latest
+    env:
+      DESTROY_AFTER: "1"
+      CITRIX_CUSTOMER_ID: ${{ secrets.CITRIX_CUSTOMER_ID }}
+      CITRIX_CLIENT_ID: ${{ secrets.CITRIX_CLIENT_ID }}
+      CITRIX_CLIENT_SECRET: ${{ secrets.CITRIX_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+      - name: Run golden scenario
+        run: ./run-golden.sh
+        working-directory: e2e
+
+  tooling:
+    name: spa_manager round-trip
+    needs: [setup, tests, golden]
+    if: ${{ !failure() && !cancelled() && (needs.setup.outputs.scenario == 'all' || needs.setup.outputs.scenario == 'tooling') }}
+    runs-on: ubuntu-latest
+    env:
+      DESTROY_AFTER: "1"
+      CITRIX_CUSTOMER_ID: ${{ secrets.CITRIX_CUSTOMER_ID }}
+      CITRIX_CLIENT_ID: ${{ secrets.CITRIX_CLIENT_ID }}
+      CITRIX_CLIENT_SECRET: ${{ secrets.CITRIX_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+      - name: Run tooling round-trip scenario
+        run: ./tooling/run-spa-manager-roundtrip.sh
+        working-directory: e2e
+
+  migrate:
+    name: migrate A -> B
+    needs: [setup, tests, golden, tooling]
+    if: ${{ !failure() && !cancelled() && (needs.setup.outputs.scenario == 'all' || needs.setup.outputs.scenario == 'migrate') }}
+    runs-on: ubuntu-latest
+    env:
+      DESTROY_AFTER: "1"
+      KEEP_RESOURCES: ${{ inputs.keep_resources && '1' || '0' }}
+      CONFIRM_WIPE_TENANT_B: ${{ inputs.force_wipe_tenant_b && 'yes' || '' }}
+      CITRIX_CUSTOMER_ID: ${{ secrets.CITRIX_CUSTOMER_ID }}
+      CITRIX_CLIENT_ID: ${{ secrets.CITRIX_CLIENT_ID }}
+      CITRIX_CLIENT_SECRET: ${{ secrets.CITRIX_CLIENT_SECRET }}
+      CITRIX_CUSTOMER_ID_B: ${{ secrets.CITRIX_CUSTOMER_ID_B }}
+      CITRIX_CLIENT_ID_B: ${{ secrets.CITRIX_CLIENT_ID_B }}
+      CITRIX_CLIENT_SECRET_B: ${{ secrets.CITRIX_CLIENT_SECRET_B }}
+    steps:
+      - name: Verify tenant B secrets are configured
+        run: |
+          missing=0
+          for v in CITRIX_CUSTOMER_ID_B CITRIX_CLIENT_ID_B CITRIX_CLIENT_SECRET_B; do
+            if [ -z "${!v}" ]; then
+              echo "::error::${v} is not set — the migrate scenario requires the Customer B tenant secrets"
+              missing=1
+            fi
+          done
+          [ "${missing}" = "0" ]
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
+      - name: Run migrate scenario
+        run: ./tooling/run-migrate-e2e.sh
+        working-directory: e2e

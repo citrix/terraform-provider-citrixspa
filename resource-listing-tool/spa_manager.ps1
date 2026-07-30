@@ -119,8 +119,6 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 # GLOBAL CONSTANTS
 # =============================================================================
 
-# Terraform parallelism setting for apply and plan operations
-$script:TERRAFORM_PARALLELISM = 1
 
 # =============================================================================
 # TEMPLATE CONSTANTS
@@ -130,14 +128,14 @@ $script:TERRAFORM_PARALLELISM = 1
 $script:TERRAFORM_PROVIDER_CONFIG = @'
 terraform {{
   required_providers {{
-    spa = {{
+    citrixspa = {{
       source  = "registry.terraform.io/citrix/citrixspa"
-      version = "0.8.1"
+      version = "1.1.0"
     }}
   }}
 }}
 
-provider "spa" {{
+provider "citrixspa" {{
   base_url    = var.base_url
   token_url   = var.token_url
   customer_id = var.customer_id
@@ -219,168 +217,168 @@ variable "fetch_details_on_list" {
 
 # Data Source Templates
 $script:DATA_SOURCE_APPLICATION = @'
-data "spa_application" "item" {{
+data "citrixspa_application" "item" {{
   id = "{0}"
 }}
 
 output "item_data" {{
-  value = data.spa_application.item
+  value = data.citrixspa_application.item
 }}
 '@
 
 $script:DATA_SOURCE_ACCESS_POLICY = @'
-data "spa_access_policy" "item" {{
+data "citrixspa_access_policy" "item" {{
   id = "{0}"
 }}
 
 output "item_data" {{
-  value = data.spa_access_policy.item
+  value = data.citrixspa_access_policy.item
 }}
 '@
 
 $script:DATA_SOURCE_SECURITY_GROUP = @'
-data "spa_security_group" "item" {{
+data "citrixspa_security_group" "item" {{
   id = "{0}"
 }}
 
 output "item_data" {{
-  value = data.spa_security_group.item
+  value = data.citrixspa_security_group.item
 }}
 '@
 
 $script:DATA_SOURCE_ROUTING_DOMAIN = @'
-data "spa_routing_domain" "item" {{
+data "citrixspa_routing_domain" "item" {{
   fqdn = "{0}"
 }}
 
 output "item_data" {{
-  value = data.spa_routing_domain.item
+  value = data.citrixspa_routing_domain.item
 }}
 '@
 
 $script:DATA_SOURCE_APPLICATIONS_ALL = @'
-data "spa_applications" "all" {{
+data "citrixspa_applications" "all" {{
 {0}
 }}
 
 output "applications_data" {{
-  value = data.spa_applications.all
+  value = data.citrixspa_applications.all
 }}
 '@
 
 $script:DATA_SOURCE_ACCESS_POLICIES_ALL = @'
-data "spa_access_policies" "all" {{
+data "citrixspa_access_policies" "all" {{
 {0}
 }}
 
 output "policies_data" {{
-  value = data.spa_access_policies.all
+  value = data.citrixspa_access_policies.all
 }}
 '@
 
 $script:DATA_SOURCE_SECURITY_GROUPS_ALL = @'
-data "spa_security_groups" "all" {{
+data "citrixspa_security_groups" "all" {{
 {0}
 }}
 
 output "groups_data" {{
-  value = data.spa_security_groups.all
+  value = data.citrixspa_security_groups.all
 }}
 '@
 
 $script:DATA_SOURCE_ROUTING_DOMAINS_ALL = @'
-data "spa_routing_domains" "all" {{
+data "citrixspa_routing_domains" "all" {{
 {0}
 }}
 
 output "domains_data" {{
-  value = data.spa_routing_domains.all
+  value = data.citrixspa_routing_domains.all
 }}
 '@
 
 $script:DATA_SOURCE_CERTIFICATES_ALL = @'
-data "spa_certificates" "all" {
+data "citrixspa_certificates" "all" {
 }
 
 output "certificates_data" {
-  value = data.spa_certificates.all
+  value = data.citrixspa_certificates.all
 }
 '@
 
 $script:DATA_SOURCE_BROWSER_MODE = @'
-data "spa_browser_mode" "current" {
+data "citrixspa_browser_mode" "current" {
 }
 
 output "browser_mode_data" {
-  value = data.spa_browser_mode.current
+  value = data.citrixspa_browser_mode.current
 }
 '@
 
 $script:DATA_SOURCE_HYBRID_CONFIG = @'
-data "spa_hybrid_config" "current" {
+data "citrixspa_hybrid_config" "current" {
 }
 
 output "hybrid_config_data" {
-  value = data.spa_hybrid_config.current
+  value = data.citrixspa_hybrid_config.current
 }
 '@
 
 $script:DATA_SOURCE_TERMINATE_MACHINE_ACCESS = @'
-data "spa_terminate_machine_access" "all" {{
+data "citrixspa_terminate_machine_access" "all" {{
 {0}
 }}
 
 output "terminate_machine_access_data" {{
-  value = data.spa_terminate_machine_access.all
+  value = data.citrixspa_terminate_machine_access.all
 }}
 '@
 
 $script:DATA_SOURCE_TERMINATE_USER_ACCESS = @'
-data "spa_terminate_user_access" "all" {{
+data "citrixspa_terminate_user_access" "all" {{
 {0}
 }}
 
 output "terminate_user_access_data" {{
-  value = data.spa_terminate_user_access.all
+  value = data.citrixspa_terminate_user_access.all
 }}
 '@
 
 $script:DATA_SOURCE_SESSION_POLICY = @'
-data "spa_session_policy" "item" {{
+data "citrixspa_session_policy" "item" {{
   id = "{0}"
 }}
 
 output "item_data" {{
-  value = data.spa_session_policy.item
+  value = data.citrixspa_session_policy.item
 }}
 '@
 
 $script:DATA_SOURCE_SESSION_POLICIES_ALL = @'
-data "spa_session_policies" "all" {{
+data "citrixspa_session_policies" "all" {{
 {0}
 }}
 
 output "session_policies_data" {{
-  value = data.spa_session_policies.all
+  value = data.citrixspa_session_policies.all
 }}
 '@
 
 # Resource Templates
 $script:RESOURCE_APPLICATION = @'
-resource "spa_application" "{0}" {{
+resource "citrixspa_application" "{0}" {{
   name             = "{1}"
   type             = "{2}"{3}{4}
 }}
 '@
 
 $script:RESOURCE_ACCESS_POLICY = @'
-resource "spa_access_policy" "{0}" {{
+resource "citrixspa_access_policy" "{0}" {{
   name        = "{1}"{2}
 }}
 '@
 
 $script:RESOURCE_SECURITY_GROUP = @'
-resource "spa_security_group" "{0}" {{
+resource "citrixspa_security_group" "{0}" {{
   name        = "{1}"
   app_ids     = {2}
   system = {{
@@ -395,27 +393,27 @@ resource "spa_security_group" "{0}" {{
 '@
 
 $script:RESOURCE_BROWSER_MODE = @'
-resource "spa_browser_mode" "{0}" {{
+resource "citrixspa_browser_mode" "{0}" {{
 {1}
 }}
 '@
 
 $script:RESOURCE_CERTIFICATE = @'
-resource "spa_certificate" "{0}" {{
+resource "citrixspa_certificate" "{0}" {{
   certificate_name = "{1}"
   certificate      = "{2}"{3}
 }}
 '@
 
 $script:RESOURCE_ROUTING_DOMAIN = @'
-resource "spa_routing_domain" "{0}" {{
+resource "citrixspa_routing_domain" "{0}" {{
   fqdn        = "{1}"
   type        = "{2}"{3}
 }}
 '@
 
 $script:RESOURCE_TERMINATE_MACHINE_ACCESS = @'
-resource "spa_terminate_machine_access" "{0}" {{
+resource "citrixspa_terminate_machine_access" "{0}" {{
     account_name  = "{1}"
     name          = "{2}"
     dns_host_name = "{3}"
@@ -427,7 +425,7 @@ resource "spa_terminate_machine_access" "{0}" {{
 '@
 
 $script:RESOURCE_TERMINATE_USER_ACCESS = @'
-resource "spa_terminate_user_access" "{0}" {{
+resource "citrixspa_terminate_user_access" "{0}" {{
   account_name  = "{1}"
   email         = "{2}"
   domain_name   = "{3}"
@@ -1194,8 +1192,6 @@ function Invoke-TerraformQuery {
         Set-Content -Path $tempTf -Value $ConfigContent -Encoding UTF8
         
         # Set up environment
-        $env:TF_CLI_ARGS_apply = "-parallelism=$script:TERRAFORM_PARALLELISM"
-        $env:TF_CLI_ARGS_plan = "-parallelism=$script:TERRAFORM_PARALLELISM"
         
         if ($script:DebugMode) {
             $env:TF_LOG_PROVIDER = $script:DebugLevel
@@ -1366,8 +1362,6 @@ function Get-IndividualItem {
         Set-Content -Path $tempTf -Value $config -Encoding UTF8
         
         # Set up environment
-        $env:TF_CLI_ARGS_apply = "-parallelism=$script:TERRAFORM_PARALLELISM"
-        $env:TF_CLI_ARGS_plan = "-parallelism=$script:TERRAFORM_PARALLELISM"
         
         if ($script:DebugMode) {
             $env:TF_LOG_PROVIDER = $script:DebugLevel
@@ -2323,7 +2317,7 @@ function ConvertTo-SsoNormalized {
 function New-ApplicationResource {
     <#
     .SYNOPSIS
-        Generate terraform resource block for spa_application (without read-only fields)
+        Generate terraform resource block for citrixspa_application (without read-only fields)
     
     .DESCRIPTION
         This method handles different field types appropriately:
@@ -2566,7 +2560,7 @@ function New-ApplicationResource {
         foreach ($url in $relatedUrls) {
             if ($RoutingDomainFqdnToResource.ContainsKey($url)) {
                 $rdResourceName = $RoutingDomainFqdnToResource[$url]
-                $routingDomainDependencies += "spa_routing_domain.$rdResourceName"
+                $routingDomainDependencies += "citrixspa_routing_domain.$rdResourceName"
             }
         }
     }
@@ -2577,7 +2571,7 @@ function New-ApplicationResource {
         $domain = Get-DomainFromUrl $appUrl
         if ($domain -and $RoutingDomainFqdnToResource.ContainsKey($domain)) {
             $rdResourceName = $RoutingDomainFqdnToResource[$domain]
-            $routingDomainDependencies += "spa_routing_domain.$rdResourceName"
+            $routingDomainDependencies += "citrixspa_routing_domain.$rdResourceName"
         }
     }
     
@@ -2587,7 +2581,7 @@ function New-ApplicationResource {
         foreach ($dest in $destinations) {
             if ($RoutingDomainFqdnToResource.ContainsKey($dest)) {
                 $rdResourceName = $RoutingDomainFqdnToResource[$dest]
-                $routingDomainDependencies += "spa_routing_domain.$rdResourceName"
+                $routingDomainDependencies += "citrixspa_routing_domain.$rdResourceName"
             }
         }
     }
@@ -2790,7 +2784,7 @@ $ruleContent
 function New-AccessPolicyResource {
     <#
     .SYNOPSIS
-        Generate terraform resource block for spa_access_policy (without read-only fields)
+        Generate terraform resource block for citrixspa_access_policy (without read-only fields)
     
     .DESCRIPTION
         This method handles different field types appropriately:
@@ -2859,7 +2853,7 @@ function New-AccessPolicyResource {
             foreach ($app in $apps) {
                 if ($AppIdToResourceName.ContainsKey($app)) {
                     $resourceName = $AppIdToResourceName[$app]
-                    $appsFormattedList += "spa_application.$resourceName.id"
+                    $appsFormattedList += "citrixspa_application.$resourceName.id"
                 }
                 else {
                     $appsFormattedList += "`"$app`""
@@ -2962,7 +2956,7 @@ function New-AccessPolicyResource {
 function New-SecurityGroupResource {
     <#
     .SYNOPSIS
-        Generate terraform resource block for spa_security_group (without read-only fields)
+        Generate terraform resource block for citrixspa_security_group (without read-only fields)
     
     .DESCRIPTION
         This method handles different field types appropriately:
@@ -3008,7 +3002,7 @@ function New-SecurityGroupResource {
         foreach ($appId in $appIds) {
             if ($AppIdToResourceName.ContainsKey($appId)) {
                 $resourceName = $AppIdToResourceName[$appId]
-                $appIdsList += "spa_application.$resourceName.id"
+                $appIdsList += "citrixspa_application.$resourceName.id"
             }
             else {
                 $appIdsList += "`"$appId`""
@@ -3050,7 +3044,7 @@ function New-SecurityGroupResource {
 function New-BrowserModeResource {
     <#
     .SYNOPSIS
-        Generate terraform resource block for spa_browser_mode (without read-only fields)
+        Generate terraform resource block for citrixspa_browser_mode (without read-only fields)
     #>
     param([string]$BrowserMode)
     
@@ -3068,7 +3062,7 @@ function New-BrowserModeResource {
 function New-HybridConfigDataSource {
     <#
     .SYNOPSIS
-        Generate terraform data source block for spa_hybrid_config
+        Generate terraform data source block for citrixspa_hybrid_config
     #>
     param([object]$HybridConfigData)
     
@@ -3092,7 +3086,7 @@ function New-HybridConfigDataSource {
     
     # Generate data source block (data sources are read-only, no configuration needed)
     $dataSource = @"
-data "spa_hybrid_config" "$safeName" {
+data "citrixspa_hybrid_config" "$safeName" {
   # This data source retrieves current hybrid configuration
   # first_time: $firstTime
   # is_hybrid: $isHybrid
@@ -3105,7 +3099,7 @@ data "spa_hybrid_config" "$safeName" {
 function New-CertificateResource {
     <#
     .SYNOPSIS
-        Generate terraform resource block for spa_certificate (without read-only fields)
+        Generate terraform resource block for citrixspa_certificate (without read-only fields)
     #>
     param([object]$Certificate)
     
@@ -3141,7 +3135,7 @@ function New-CertificateResource {
 function New-RoutingDomainResource {
     <#
     .SYNOPSIS
-        Generate terraform resource block for spa_routing_domain (without read-only fields)
+        Generate terraform resource block for citrixspa_routing_domain (without read-only fields)
     
     .DESCRIPTION
         This method handles different field types appropriately:
@@ -3219,7 +3213,7 @@ function New-RoutingDomainResource {
 function New-SessionPolicyRuleBlock {
     <#
     .SYNOPSIS
-        Generate HCL for one rule inside the rule = [...] list of a spa_session_policy resource
+        Generate HCL for one rule inside the rule = [...] list of a citrixspa_session_policy resource
     #>
     param([object]$Rule)
 
@@ -3333,7 +3327,7 @@ function New-SessionPolicyRuleBlock {
 function New-SessionPolicyResource {
     <#
     .SYNOPSIS
-        Generate terraform resource block for spa_session_policy (without read-only fields)
+        Generate terraform resource block for citrixspa_session_policy (without read-only fields)
     #>
     param([object]$Policy)
 
@@ -3350,7 +3344,7 @@ function New-SessionPolicyResource {
     $active = Get-PropValue $Policy 'active' $false
 
     $lines = @()
-    $lines += "resource `"spa_session_policy`" `"$safeName`" {"
+    $lines += "resource `"citrixspa_session_policy`" `"$safeName`" {"
     $lines += "  name   = `"$policyName`""
     $lines += "  active = $($active.ToString().ToLower())"
 
@@ -3525,7 +3519,7 @@ function New-TerraformResources {
             # Add import command
             $domainId = Get-PropValue $domain 'fqdn' (Get-PropValue $domain 'id' '')
             if ($domainId) {
-                $importCommands += "terraform import spa_routing_domain.$safeName `"$domainId`""
+                $importCommands += "terraform import citrixspa_routing_domain.$safeName `"$domainId`""
             }
             
             $script:ResourceCounts['routing_domains']++
@@ -3546,7 +3540,7 @@ function New-TerraformResources {
             # Add import command
             $appId = Get-PropValue $app 'id' (Get-PropValue $app 'name' '')
             if ($appId) {
-                $importCommands += "terraform import spa_application.$safeName `"$appId`""
+                $importCommands += "terraform import citrixspa_application.$safeName `"$appId`""
                 $appIdToResourceName[$appId] = $safeName
             }
             
@@ -3568,7 +3562,7 @@ function New-TerraformResources {
             # Add import command
             $policyId = Get-PropValue $policy 'id' (Get-PropValue $policy 'name' '')
             if ($policyId) {
-                $importCommands += "terraform import spa_access_policy.$safeName `"$policyId`""
+                $importCommands += "terraform import citrixspa_access_policy.$safeName `"$policyId`""
             }
             
             $script:ResourceCounts['access_policies']++
@@ -3589,7 +3583,7 @@ function New-TerraformResources {
             # Add import command
             $policyId = Get-PropValue $policy 'id' (Get-PropValue $policy 'name' '')
             if ($policyId) {
-                $importCommands += "terraform import spa_session_policy.$safeName `"$policyId`""
+                $importCommands += "terraform import citrixspa_session_policy.$safeName `"$policyId`""
             }
             
             $script:ResourceCounts['session_policies']++
@@ -3610,7 +3604,7 @@ function New-TerraformResources {
             # Add import command
             $groupId = Get-PropValue $group 'id' (Get-PropValue $group 'name' '')
             if ($groupId) {
-                $importCommands += "terraform import spa_security_group.$safeName `"$groupId`""
+                $importCommands += "terraform import citrixspa_security_group.$safeName `"$groupId`""
             }
             
             $script:ResourceCounts['security_groups']++
@@ -3631,7 +3625,7 @@ function New-TerraformResources {
             # Add import command
             $certId = Get-PropValue $cert 'certificate_id' ''
             if ($certId) {
-                $importCommands += "terraform import spa_certificate.$safeName `"$certId`""
+                $importCommands += "terraform import citrixspa_certificate.$safeName `"$certId`""
             }
             
             $script:ResourceCounts['certificates']++
@@ -3650,7 +3644,7 @@ function New-TerraformResources {
         $resources += ""
         
         # Add import command
-        $importCommands += "terraform import spa_browser_mode.$safeName `"browser_mode`""
+        $importCommands += "terraform import citrixspa_browser_mode.$safeName `"browser_mode`""
         
         $script:ResourceCounts['browser_modes']++
     }
@@ -3699,7 +3693,7 @@ function New-TerraformResources {
                 $resources += ""
                 
                 if ($machineId) {
-                    $importCommands += "terraform import spa_terminate_machine_access.$safeName `"$machineId`""
+                    $importCommands += "terraform import citrixspa_terminate_machine_access.$safeName `"$machineId`""
                 }
                 
                 $script:ResourceCounts['terminate_machine_access']++
@@ -3738,7 +3732,7 @@ function New-TerraformResources {
                 $resources += ""
                 
                 if ($userId) {
-                    $importCommands += "terraform import spa_terminate_user_access.$safeName `"$userId`""
+                    $importCommands += "terraform import citrixspa_terminate_user_access.$safeName `"$userId`""
                 }
                 
                 $script:ResourceCounts['terminate_user_access']++
@@ -3822,7 +3816,7 @@ function Format-ImportBlocks {
         # Parse "terraform import resource_type.resource_name 'resource_id'"
         $parts = $cmd -split ' ', 4
         if ($parts.Count -ge 4) {
-            $resourceAddress = $parts[2]  # e.g., "spa_application.app_name"
+            $resourceAddress = $parts[2]  # e.g., "citrixspa_application.app_name"
             $resourceId = $parts[3].Trim('"''')
             
             # Generate import block
@@ -3847,10 +3841,10 @@ function New-MinimalImportBlocks {
         # Build data sources list
         $dataSources = ""
         if ($tmaCount -gt 0) {
-            $dataSources += "`n#   - spa_terminate_machine_access.discovered ($tmaCount machines)"
+            $dataSources += "`n#   - citrixspa_terminate_machine_access.discovered ($tmaCount machines)"
         }
         if ($tuaCount -gt 0) {
-            $dataSources += "`n#   - spa_terminate_user_access.discovered ($tuaCount users)"
+            $dataSources += "`n#   - citrixspa_terminate_user_access.discovered ($tuaCount users)"
         }
         
         $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -4111,9 +4105,6 @@ function Invoke-TerraformPlan {
     
     Push-Location $script:WorkDir
     try {
-        # Set environment variables for parallelism
-        $env:TF_CLI_ARGS_apply = "-parallelism=$script:TERRAFORM_PARALLELISM"
-        $env:TF_CLI_ARGS_plan = "-parallelism=$script:TERRAFORM_PARALLELISM"
         
         if ($script:DebugMode) {
             $env:TF_LOG = $script:DebugLevel
@@ -4165,9 +4156,6 @@ function Invoke-TerraformPlanResources {
     
     Push-Location $script:WorkDir
     try {
-        # Set environment variables for parallelism
-        $env:TF_CLI_ARGS_apply = "-parallelism=$script:TERRAFORM_PARALLELISM"
-        $env:TF_CLI_ARGS_plan = "-parallelism=$script:TERRAFORM_PARALLELISM"
         
         if ($script:DebugMode) {
             $env:TF_LOG_PROVIDER = $script:DebugLevel
@@ -4233,9 +4221,6 @@ function Show-TerraformUpdate {
     
     Push-Location $script:WorkDir
     try {
-        # Set environment variables for parallelism
-        $env:TF_CLI_ARGS_apply = "-parallelism=$script:TERRAFORM_PARALLELISM"
-        $env:TF_CLI_ARGS_plan = "-parallelism=$script:TERRAFORM_PARALLELISM"
         
         $process = Start-Process -FilePath 'terraform' -ArgumentList 'show', '-json', $script:PlanOutput -Wait -NoNewWindow -PassThru -RedirectStandardOutput 'show_out.txt' -RedirectStandardError 'show_err.txt'
         
@@ -4335,9 +4320,6 @@ function Invoke-TerraformApplyPlan {
     
     Push-Location $script:WorkDir
     try {
-        # Set environment variables for parallelism
-        $env:TF_CLI_ARGS_apply = "-parallelism=$script:TERRAFORM_PARALLELISM"
-        $env:TF_CLI_ARGS_plan = "-parallelism=$script:TERRAFORM_PARALLELISM"
         
         if ($script:DebugMode) {
             $env:TF_LOG_PROVIDER = $script:DebugLevel
@@ -4390,9 +4372,6 @@ function Test-TerraformConfiguration {
     
     Push-Location $script:WorkDir
     try {
-        # Set environment variables for parallelism
-        $env:TF_CLI_ARGS_apply = "-parallelism=$script:TERRAFORM_PARALLELISM"
-        $env:TF_CLI_ARGS_plan = "-parallelism=$script:TERRAFORM_PARALLELISM"
         
         $terraformrcPath = Join-Path $script:WorkDir '.terraformrc'
         if (Test-Path $terraformrcPath) {

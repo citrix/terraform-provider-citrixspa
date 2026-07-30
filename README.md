@@ -25,7 +25,7 @@ Terraform provider for managing Citrix Secure Private Access (SPA) resources thr
 ```hcl
 terraform {
   required_providers {
-    spa = {
+    citrixspa = {
       source = "citrix/citrixspa"
     }
   }
@@ -47,7 +47,7 @@ The provider supports two authentication methods. Use only one at a time.
 ### Direct Token
 
 ```hcl
-provider "spa" {
+provider "citrixspa" {
   base_url    = "https://api.cloud.com/accessSecurity"
   customer_id = "your-customer-id"
   auth_token  = "your-auth-token"
@@ -66,7 +66,7 @@ export CITRIX_AUTH_TOKEN="your-auth-token"
 Uses OAuth2 client credentials flow with automatic token management and optional encrypted disk caching.
 
 ```hcl
-provider "spa" {
+provider "citrixspa" {
   base_url      = "https://api.cloud.com/accessSecurity"
   customer_id   = "your-customer-id"
   client_id     = "your-client-id"
@@ -85,7 +85,7 @@ export CITRIX_CLIENT_SECRET="your-client-secret"
 ## Provider Configuration
 
 ```hcl
-provider "spa" {
+provider "citrixspa" {
   base_url             = "https://api.cloud.com/accessSecurity"  # Optional, this is the default
   token_url            = "https://api.cloud.com"                 # Optional, derived from base_url
   customer_id          = "your-customer-id"
@@ -101,7 +101,7 @@ provider "spa" {
 ### Web Application
 
 ```hcl
-resource "spa_application" "web_app" {
+resource "citrixspa_application" "web_app" {
   name           = "My Web Application"
   type           = "web"
   description    = "A sample web application"
@@ -116,7 +116,7 @@ resource "spa_application" "web_app" {
 ### ZTNA Application
 
 ```hcl
-resource "spa_application" "ztna_app" {
+resource "citrixspa_application" "ztna_app" {
   name        = "Internal Database"
   type        = "ztna"
   description = "Internal database server"
@@ -134,7 +134,7 @@ resource "spa_application" "ztna_app" {
 ### Routing Domain
 
 ```hcl
-resource "spa_routing_domain" "internal_domain" {
+resource "citrixspa_routing_domain" "internal_domain" {
   fqdn    = "internal.example.com"
   type    = "internal"
   comment = "Internal domain for web applications"
@@ -149,16 +149,16 @@ resource "spa_routing_domain" "internal_domain" {
 ### Data Sources
 
 ```hcl
-data "spa_application" "existing" {
+data "citrixspa_application" "existing" {
   name = "Existing Application"
 }
 
-data "spa_applications" "all" {
+data "citrixspa_applications" "all" {
   offset = 0
   limit  = 100
 }
 
-data "spa_routing_domain" "domain" {
+data "citrixspa_routing_domain" "domain" {
   fqdn = "api.example.com"
 }
 ```

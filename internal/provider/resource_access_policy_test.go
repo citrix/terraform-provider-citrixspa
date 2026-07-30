@@ -243,7 +243,7 @@ func testAccCheckAccessPolicyDestroy(s *terraform.State) error {
 	ctx := context.Background()
 
 	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "spa_access_policy" {
+		if rs.Type != "citrixspa_access_policy" {
 			continue
 		}
 
@@ -303,7 +303,7 @@ type testAccessPolicyConfig struct {
 	name            string // policy display name
 	description     string
 	active          bool
-	appResourceName string // HCL resource label of the spa_application to reference
+	appResourceName string // HCL resource label of the citrixspa_application to reference
 	priority        int
 	accessRulesHCL  string // raw HCL block for the access_rules attribute
 }
@@ -415,18 +415,18 @@ const testAccComplexAccessRulesHCL = `  access_rules = [
     }
   ]`
 
-// testAccAccessPolicyConfig generates a Terraform HCL config for a spa_access_policy resource.
+// testAccAccessPolicyConfig generates a Terraform HCL config for a citrixspa_access_policy resource.
 func testAccAccessPolicyConfig(cfg testAccessPolicyConfig) string {
 	if cfg.resourceName == "" {
 		cfg.resourceName = "test"
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "resource \"spa_access_policy\" %q {\n", cfg.resourceName)
+	fmt.Fprintf(&b, "resource \"citrixspa_access_policy\" %q {\n", cfg.resourceName)
 	fmt.Fprintf(&b, "  name        = %q\n", cfg.name)
 	fmt.Fprintf(&b, "  description = %q\n", cfg.description)
 	fmt.Fprintf(&b, "  active      = %v\n", cfg.active)
-	fmt.Fprintf(&b, "  apps        = [spa_application.%s.id]\n", cfg.appResourceName)
+	fmt.Fprintf(&b, "  apps        = [citrixspa_application.%s.id]\n", cfg.appResourceName)
 	fmt.Fprintf(&b, "  priority    = %d\n", cfg.priority)
 	if cfg.accessRulesHCL != "" {
 		fmt.Fprintf(&b, "%s\n", cfg.accessRulesHCL)
@@ -452,7 +452,7 @@ func testAccAccessPolicyConfig_basic(name string) string {
 		description:  "Test app for basic access policy",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -485,7 +485,7 @@ func testAccAccessPolicyConfig_basicUpdated(name string) string {
 		description:  "Test app for basic access policy",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -518,7 +518,7 @@ func testAccAccessPolicyConfig_complex(name string) string {
 		description:  "Test app for access policy",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -551,7 +551,7 @@ func testAccAccessPolicyConfig_complexUpdated(name string) string {
 		description:  "Test app for access policy",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -584,7 +584,7 @@ func testAccAccessPolicyConfig_noConditions(name string) string {
 		description:  "Test app for no-conditions access policy",
 		url:          "https://" + fqdn,
 		relatedURLs:  []string{"*." + fqdn},
-		dependsOn:    []string{"spa_routing_domain." + rdResourceName},
+		dependsOn:    []string{"citrixspa_routing_domain." + rdResourceName},
 	})
 
 	policyConfig := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -623,19 +623,19 @@ func TestAccAccessPolicy_noConditions(t *testing.T) {
 			{
 				Config: testAccAccessPolicyConfig_noConditions(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.test_no_conditions"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_no_conditions", "name", name),
-					resource.TestCheckResourceAttr("spa_access_policy.test_no_conditions", "active", "false"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_no_conditions", "priority", "997"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_no_conditions", "access_rules.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_no_conditions", "access_rules.0.name", "No Conditions Rule"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_no_conditions", "access_rules.0.conditions.#", "0"),
-					resource.TestCheckResourceAttrSet("spa_access_policy.test_no_conditions", "id"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.test_no_conditions"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_no_conditions", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_no_conditions", "active", "false"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_no_conditions", "priority", "997"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_no_conditions", "access_rules.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_no_conditions", "access_rules.0.name", "No Conditions Rule"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_no_conditions", "access_rules.0.conditions.#", "0"),
+					resource.TestCheckResourceAttrSet("citrixspa_access_policy.test_no_conditions", "id"),
 				),
 			},
 			// Step 2: Import — verifies the empty conditions list round-trips.
 			{
-				ResourceName:      "spa_access_policy.test_no_conditions",
+				ResourceName:      "citrixspa_access_policy.test_no_conditions",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -656,53 +656,58 @@ func TestAccAccessPolicy_basicAccessRules(t *testing.T) {
 			{
 				Config: testAccAccessPolicyConfig_basic(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.test_basic"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "name", name),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "description", "Terraform acceptance test - basic access policy"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "active", "false"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "priority", "999"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.name", "Default Rule"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.priority", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.active", "true"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.access", "ACCESS_DENY"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.access_native", "ACCESS_DENY"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.0.type", "TYPE_USERGROUP"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.0.operator", "OPERATOR_IN"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.0.tag_source", ""),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.0.tag_key", ""),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.0.values.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.0.values.0", "Everyone"),
-					resource.TestCheckResourceAttrSet("spa_access_policy.test_basic", "id"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.test_basic"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "description", "Terraform acceptance test - basic access policy"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "active", "false"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "priority", "999"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.name", "Default Rule"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.priority", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.active", "true"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.access", "ACCESS_DENY"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.access_native", "ACCESS_DENY"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.0.type", "TYPE_USERGROUP"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.0.operator", "OPERATOR_IN"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.0.tag_source", ""),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.0.tag_key", ""),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.0.values.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.0.values.0", "Everyone"),
+					resource.TestCheckResourceAttrSet("citrixspa_access_policy.test_basic", "id"),
 				),
 			},
-			// Step 2: Update - change description, enable active, lower priority
+			// Step 2: Idempotency — re-applying the create config yields an empty plan
+			{
+				Config:   testAccAccessPolicyConfig_basic(name),
+				PlanOnly: true,
+			},
+			// Step 3: Update - change description, enable active, lower priority
 			{
 				Config: testAccAccessPolicyConfig_basicUpdated(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.test_basic"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "name", name),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "description", "Terraform acceptance test - basic access policy UPDATED"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "active", "true"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "priority", "998"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.name", "Default Rule"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.priority", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.active", "true"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.access", "ACCESS_DENY"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.access_native", "ACCESS_DENY"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.0.type", "TYPE_USERGROUP"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.0.operator", "OPERATOR_IN"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.0.values.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_basic", "access_rules.0.rules.0.values.0", "Everyone"),
-					resource.TestCheckResourceAttrSet("spa_access_policy.test_basic", "id"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.test_basic"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "description", "Terraform acceptance test - basic access policy UPDATED"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "active", "true"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "priority", "998"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.name", "Default Rule"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.priority", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.active", "true"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.access", "ACCESS_DENY"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.access_native", "ACCESS_DENY"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.0.type", "TYPE_USERGROUP"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.0.operator", "OPERATOR_IN"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.0.values.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_basic", "access_rules.0.rules.0.values.0", "Everyone"),
+					resource.TestCheckResourceAttrSet("citrixspa_access_policy.test_basic", "id"),
 				),
 			},
-			// Step 3: Import by ID and verify state matches
+			// Step 4: Import by ID and verify state matches
 			{
-				ResourceName:      "spa_access_policy.test_basic",
+				ResourceName:      "citrixspa_access_policy.test_basic",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -724,69 +729,69 @@ func TestAccAccessPolicy_complexAccessRules(t *testing.T) {
 			{
 				Config: testAccAccessPolicyConfig_complex(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.test_with_rules"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "name", name),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "description", "Terraform acceptance test - policy with access rules"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "active", "false"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "priority", "998"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.name", "Allow Rule"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.priority", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.active", "true"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.access", "ACCESS_ALLOW"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.conditions.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.conditions.0.platform_filter", "PLATFORM_FILTER_ANY"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.redirect_sbs", "false"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings._browserV1", "embeddedBrowser"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.watermarkV1", "enabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.downloadV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.uploadV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.clipboardV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.printingV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.keyLoggingV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.screenCaptureV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.proxyTrafficV1", "direct"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.rules.#", "3"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.rules.0.type", "TYPE_USERGROUP"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.rules.0.operator", "OPERATOR_IN"),
-					resource.TestCheckResourceAttrSet("spa_access_policy.test_with_rules", "id"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.test_with_rules"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "description", "Terraform acceptance test - policy with access rules"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "active", "false"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "priority", "998"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.name", "Allow Rule"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.priority", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.active", "true"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.access", "ACCESS_ALLOW"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.conditions.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.conditions.0.platform_filter", "PLATFORM_FILTER_ANY"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.redirect_sbs", "false"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings._browserV1", "embeddedBrowser"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.watermarkV1", "enabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.downloadV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.uploadV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.clipboardV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.printingV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.keyLoggingV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.screenCaptureV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.proxyTrafficV1", "direct"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.rules.#", "3"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.rules.0.type", "TYPE_USERGROUP"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.rules.0.operator", "OPERATOR_IN"),
+					resource.TestCheckResourceAttrSet("citrixspa_access_policy.test_with_rules", "id"),
 				),
 			},
 			// Step 2: Update - change description, enable active, lower priority
 			{
 				Config: testAccAccessPolicyConfig_complexUpdated(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckAccessPolicyExistsInAPI("spa_access_policy.test_with_rules"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "name", name),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "description", "Terraform acceptance test - policy with access rules UPDATED"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "active", "true"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "priority", "997"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.name", "Allow Rule"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.priority", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.active", "true"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.access", "ACCESS_ALLOW"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.conditions.#", "1"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.conditions.0.platform_filter", "PLATFORM_FILTER_ANY"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.redirect_sbs", "false"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings._browserV1", "embeddedBrowser"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.watermarkV1", "enabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.downloadV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.uploadV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.clipboardV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.printingV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.keyLoggingV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.screenCaptureV1", "disabled"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.proxyTrafficV1", "direct"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.rules.#", "3"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.rules.0.type", "TYPE_USERGROUP"),
-					resource.TestCheckResourceAttr("spa_access_policy.test_with_rules", "access_rules.0.rules.0.operator", "OPERATOR_IN"),
-					resource.TestCheckResourceAttrSet("spa_access_policy.test_with_rules", "id"),
+					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.test_with_rules"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "description", "Terraform acceptance test - policy with access rules UPDATED"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "active", "true"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "priority", "997"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.name", "Allow Rule"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.priority", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.active", "true"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.access", "ACCESS_ALLOW"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.conditions.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.conditions.0.platform_filter", "PLATFORM_FILTER_ANY"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.redirect_sbs", "false"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings._browserV1", "embeddedBrowser"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.watermarkV1", "enabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.downloadV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.uploadV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.clipboardV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.printingV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.keyLoggingV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.screenCaptureV1", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.restrictions.enhanced_security_settings.proxyTrafficV1", "direct"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.rules.#", "3"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.rules.0.type", "TYPE_USERGROUP"),
+					resource.TestCheckResourceAttr("citrixspa_access_policy.test_with_rules", "access_rules.0.rules.0.operator", "OPERATOR_IN"),
+					resource.TestCheckResourceAttrSet("citrixspa_access_policy.test_with_rules", "id"),
 				),
 			},
 			// Step 3: Import by ID and verify state matches
 			{
-				ResourceName:      "spa_access_policy.test_with_rules",
+				ResourceName:      "citrixspa_access_policy.test_with_rules",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},

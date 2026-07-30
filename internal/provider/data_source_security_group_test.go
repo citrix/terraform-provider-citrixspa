@@ -19,15 +19,15 @@ func testAccSecurityGroupDataSourceByIDConfig(appName, sgName string) string {
 		testAccSecurityGroupConfig(testSecurityGroupConfig{
 			resourceName:   "ds_sg",
 			name:           sgName,
-			appRefs:        []string{"spa_application.ds_sg_app.id"},
+			appRefs:        []string{"citrixspa_application.ds_sg_app.id"},
 			systemIn:       "enabled",
 			systemOut:      "disabled",
 			unpublishedIn:  "disabled",
 			unpublishedOut: "disabled",
 		}) + `
-data "spa_security_group" "by_id" {
-  id         = spa_security_group.ds_sg.id
-  depends_on = [spa_security_group.ds_sg]
+data "citrixspa_security_group" "by_id" {
+  id         = citrixspa_security_group.ds_sg.id
+  depends_on = [citrixspa_security_group.ds_sg]
 }
 `
 }
@@ -35,7 +35,7 @@ data "spa_security_group" "by_id" {
 // testAccSecurityGroupDataSourceNotFoundConfig references a non-existent ID.
 func testAccSecurityGroupDataSourceNotFoundConfig() string {
 	return `
-data "spa_security_group" "missing" {
+data "citrixspa_security_group" "missing" {
   id = "00000000-0000-0000-0000-000000000000"
 }
 `
@@ -65,27 +65,27 @@ func TestAccSecurityGroupDataSource_byID(t *testing.T) {
 			{
 				Config: testAccSecurityGroupDataSourceByIDConfig(appName, sgName),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSecurityGroupExistsInAPI("spa_security_group.ds_sg"),
+					testAccCheckSecurityGroupExistsInAPI("citrixspa_security_group.ds_sg"),
 					// Verify data source fields are populated
-					resource.TestCheckResourceAttrSet("data.spa_security_group.by_id", "id"),
-					resource.TestCheckResourceAttr("data.spa_security_group.by_id", "name", sgName),
-					resource.TestCheckResourceAttr("data.spa_security_group.by_id", "system.data_in", "enabled"),
-					resource.TestCheckResourceAttr("data.spa_security_group.by_id", "system.data_out", "disabled"),
-					resource.TestCheckResourceAttr("data.spa_security_group.by_id", "unpublished_app.data_in", "disabled"),
-					resource.TestCheckResourceAttr("data.spa_security_group.by_id", "unpublished_app.data_out", "disabled"),
-					resource.TestCheckResourceAttrSet("data.spa_security_group.by_id", "modified"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_security_group.by_id", "id"),
+					resource.TestCheckResourceAttr("data.citrixspa_security_group.by_id", "name", sgName),
+					resource.TestCheckResourceAttr("data.citrixspa_security_group.by_id", "system.data_in", "enabled"),
+					resource.TestCheckResourceAttr("data.citrixspa_security_group.by_id", "system.data_out", "disabled"),
+					resource.TestCheckResourceAttr("data.citrixspa_security_group.by_id", "unpublished_app.data_in", "disabled"),
+					resource.TestCheckResourceAttr("data.citrixspa_security_group.by_id", "unpublished_app.data_out", "disabled"),
+					resource.TestCheckResourceAttrSet("data.citrixspa_security_group.by_id", "modified"),
 					// Data source values must match the resource
 					resource.TestCheckResourceAttrPair(
-						"data.spa_security_group.by_id", "id",
-						"spa_security_group.ds_sg", "id",
+						"data.citrixspa_security_group.by_id", "id",
+						"citrixspa_security_group.ds_sg", "id",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_security_group.by_id", "name",
-						"spa_security_group.ds_sg", "name",
+						"data.citrixspa_security_group.by_id", "name",
+						"citrixspa_security_group.ds_sg", "name",
 					),
 					resource.TestCheckResourceAttrPair(
-						"data.spa_security_group.by_id", "app_ids.#",
-						"spa_security_group.ds_sg", "app_ids.#",
+						"data.citrixspa_security_group.by_id", "app_ids.#",
+						"citrixspa_security_group.ds_sg", "app_ids.#",
 					),
 				),
 			},

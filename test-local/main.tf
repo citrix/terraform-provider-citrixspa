@@ -1,13 +1,13 @@
 terraform {
   required_providers {
-    spa = {
+    citrixspa = {
       source  = "registry.terraform.io/citrix/citrixspa"
-      version = "0.1.0"
+      version = "1.1.0"
     }
   }
 }
 
-provider "spa" {
+provider "citrixspa" {
   # Configuration options
   base_url    = var.base_url
   customer_id = var.citrix_customer_id
@@ -56,17 +56,17 @@ variable "citrix_client_secret" {
 
 # Example: Data source to test connectivity
 # GET the first 2 applications to verify the provider can connect and authenticate successfully
-data "spa_applications" "test_apps" {
+data "citrixspa_applications" "test_apps" {
   offset = 0
   limit  = 2
 }
 
 output "apps" {
-  value = data.spa_applications.test_apps
+  value = data.citrixspa_applications.test_apps
 }
 
 # Example: Create a simple resource for testing
-# resource "spa_application" "test_app" {
+# resource "citrixspa_application" "test_app" {
 #   name = "Test Application - Local Provider"
 #   type = "web"
 #   # Add other required attributes based on your resource schema
@@ -74,7 +74,7 @@ output "apps" {
 
 # # Output to verify the test
 # output "test_app_id" {
-#   value = spa_application.test_app.id
+#   value = citrixspa_application.test_app.id
 # }
 
 # output "provider_test_status" {

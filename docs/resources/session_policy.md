@@ -1,10 +1,10 @@
 ---
-page_title: "spa_session_policy Resource - spa"
+page_title: "citrixspa_session_policy Resource - citrixspa"
 description: |-
   Resource for creating and managing SPA session policies.
 ---
 
-# spa_session_policy (Resource)
+# citrixspa_session_policy (Resource)
 
 Resource for creating and managing SPA session policies. Session policies apply routing and security behaviour at the session level across all applications, unlike access policies which are per-application. A session policy contains one or more rules, each with conditions and actions.
 
@@ -13,7 +13,7 @@ Resource for creating and managing SPA session policies. Session policies apply 
 ## Example Usage
 
 ```terraform
-resource "spa_session_policy" "route_external" {
+resource "citrixspa_session_policy" "route_external" {
   name        = "Route external users"
   description = "Apply external routing for non-corporate devices"
   active      = true
@@ -107,5 +107,5 @@ Optional:
 Import is supported using the session policy ID:
 
 ```shell
-terraform import spa_session_policy.route_external 00000000-0000-0000-0000-000000000000
+terraform import citrixspa_session_policy.route_external 00000000-0000-0000-0000-000000000000
 ```

@@ -22,7 +22,7 @@ func testAccCheckRoutingDomainDestroy(s *terraform.State) error {
 	ctx := context.Background()
 
 	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "spa_routing_domain" {
+		if rs.Type != "citrixspa_routing_domain" {
 			continue
 		}
 
@@ -121,7 +121,7 @@ func testAccCleanupRoutingDomain(fqdn string) {
 // with customizable parameters, reducing the need for multiple similar config functions.
 func testAccRoutingDomainConfig(resourceName, fqdn, rdType, appType, comment, flag, ip, locationIds string) string {
 	return fmt.Sprintf(`
-resource "spa_routing_domain" "%s" {
+resource "citrixspa_routing_domain" "%s" {
   fqdn         = %q
   type         = %q
   app_type     = %q
@@ -150,46 +150,51 @@ func TestAccRoutingDomain_internal(t *testing.T) {
 			{
 				Config: testAccRoutingDomainConfig("test_internal", fqdnOriginal, "internal", "web", "Terraform acceptance test - internal", "enabled", "false", "[]"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.test_internal"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "fqdn", fqdnOriginal),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "type", "internal"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "app_type", "web"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "comment", "Terraform acceptance test - internal"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "flag", "enabled"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "ip", "false"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "location_ids.#", "0"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.test_internal"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "fqdn", fqdnOriginal),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "type", "internal"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "app_type", "web"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "comment", "Terraform acceptance test - internal"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "flag", "enabled"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "ip", "false"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "location_ids.#", "0"),
 				),
 			},
-			// Step 2: Update comment and flag (same FQDN)
+			// Step 2: Idempotency — re-applying the create config yields an empty plan
+			{
+				Config:   testAccRoutingDomainConfig("test_internal", fqdnOriginal, "internal", "web", "Terraform acceptance test - internal", "enabled", "false", "[]"),
+				PlanOnly: true,
+			},
+			// Step 3: Update comment and flag (same FQDN)
 			{
 				Config: testAccRoutingDomainConfig("test_internal", fqdnOriginal, "internal", "web", "Terraform acceptance test - internal UPDATED", "disabled", "false", "[]"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.test_internal"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "fqdn", fqdnOriginal),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "type", "internal"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "app_type", "web"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "comment", "Terraform acceptance test - internal UPDATED"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "flag", "disabled"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "ip", "false"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "location_ids.#", "0"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.test_internal"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "fqdn", fqdnOriginal),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "type", "internal"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "app_type", "web"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "comment", "Terraform acceptance test - internal UPDATED"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "flag", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "ip", "false"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "location_ids.#", "0"),
 				),
 			},
-			// Step 3: Change the FQDN — exercises the oldFQDN-from-state path in Update
+			// Step 4: Change the FQDN — exercises the oldFQDN-from-state path in Update
 			{
 				Config: testAccRoutingDomainConfig("test_internal", fqdnRenamed, "internal", "web", "Terraform acceptance test - internal RENAMED", "disabled", "false", "[]"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.test_internal"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "fqdn", fqdnRenamed),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "type", "internal"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "app_type", "web"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "comment", "Terraform acceptance test - internal RENAMED"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "flag", "disabled"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "ip", "false"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_internal", "location_ids.#", "0"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.test_internal"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "fqdn", fqdnRenamed),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "type", "internal"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "app_type", "web"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "comment", "Terraform acceptance test - internal RENAMED"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "flag", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "ip", "false"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_internal", "location_ids.#", "0"),
 				),
 			},
 			{
-				ResourceName:                         "spa_routing_domain.test_internal",
+				ResourceName:                         "citrixspa_routing_domain.test_internal",
 				ImportState:                          true,
 				ImportStateVerify:                    true,
 				ImportStateId:                        fqdnRenamed,
@@ -211,31 +216,31 @@ func TestAccRoutingDomain_external(t *testing.T) {
 			{
 				Config: testAccRoutingDomainConfig("test_external", fqdn, "external", "saas", "Terraform acceptance test - external", "enabled", "false", "[]"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.test_external"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "fqdn", fqdn),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "type", "external"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "app_type", "saas"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "comment", "Terraform acceptance test - external"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "flag", "enabled"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "ip", "false"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "location_ids.#", "0"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.test_external"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "fqdn", fqdn),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "type", "external"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "app_type", "saas"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "comment", "Terraform acceptance test - external"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "flag", "enabled"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "ip", "false"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "location_ids.#", "0"),
 				),
 			},
 			{
 				Config: testAccRoutingDomainConfig("test_external", fqdn, "external", "saas", "Terraform acceptance test - external UPDATED", "disabled", "false", "[]"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.test_external"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "fqdn", fqdn),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "type", "external"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "app_type", "saas"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "comment", "Terraform acceptance test - external UPDATED"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "flag", "disabled"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "ip", "false"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_external", "location_ids.#", "0"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.test_external"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "fqdn", fqdn),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "type", "external"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "app_type", "saas"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "comment", "Terraform acceptance test - external UPDATED"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "flag", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "ip", "false"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_external", "location_ids.#", "0"),
 				),
 			},
 			{
-				ResourceName:                         "spa_routing_domain.test_external",
+				ResourceName:                         "citrixspa_routing_domain.test_external",
 				ImportState:                          true,
 				ImportStateVerify:                    true,
 				ImportStateId:                        fqdn,
@@ -257,31 +262,31 @@ func TestAccRoutingDomain_externalViaConnector(t *testing.T) {
 			{
 				Config: testAccRoutingDomainConfig("test_ext_connector", fqdn, "external_via_connector", "web", "Terraform acceptance test - external via connector", "enabled", "false", "[]"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.test_ext_connector"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "fqdn", fqdn),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "type", "external_via_connector"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "app_type", "web"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "comment", "Terraform acceptance test - external via connector"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "flag", "enabled"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "ip", "false"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "location_ids.#", "0"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.test_ext_connector"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "fqdn", fqdn),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "type", "external_via_connector"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "app_type", "web"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "comment", "Terraform acceptance test - external via connector"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "flag", "enabled"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "ip", "false"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "location_ids.#", "0"),
 				),
 			},
 			{
 				Config: testAccRoutingDomainConfig("test_ext_connector", fqdn, "external_via_connector", "web", "Terraform acceptance test - external via connector UPDATED", "disabled", "false", "[]"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckRoutingDomainExistsInAPI("spa_routing_domain.test_ext_connector"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "fqdn", fqdn),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "type", "external_via_connector"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "app_type", "web"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "comment", "Terraform acceptance test - external via connector UPDATED"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "flag", "disabled"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "ip", "false"),
-					resource.TestCheckResourceAttr("spa_routing_domain.test_ext_connector", "location_ids.#", "0"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.test_ext_connector"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "fqdn", fqdn),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "type", "external_via_connector"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "app_type", "web"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "comment", "Terraform acceptance test - external via connector UPDATED"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "flag", "disabled"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "ip", "false"),
+					resource.TestCheckResourceAttr("citrixspa_routing_domain.test_ext_connector", "location_ids.#", "0"),
 				),
 			},
 			{
-				ResourceName:                         "spa_routing_domain.test_ext_connector",
+				ResourceName:                         "citrixspa_routing_domain.test_ext_connector",
 				ImportState:                          true,
 				ImportStateVerify:                    true,
 				ImportStateId:                        fqdn,

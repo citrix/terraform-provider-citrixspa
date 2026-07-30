@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 // newTestClient creates an APIClient with a custom transport that captures
 // the outgoing request instead of making a real HTTP call.
 func newTestClient(customerID, authToken string, suppressASBNotifications bool, captured *http.Request) *APIClient {
-	client := NewAPIClient("https://test.example.com", customerID, authToken, nil, false, suppressASBNotifications, nil, "test-agent")
+	client := NewAPIClient("https://test.example.com", customerID, authToken, nil, 0, false, suppressASBNotifications, nil, "test-agent")
 	client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		*captured = *req
 		return &http.Response{
@@ -95,9 +96,90 @@ func TestMakeRequest_StandardHeaders(t *testing.T) {
 	}
 }
 
+// TestMakeRequest_SemaphoreGating verifies the max_concurrent semaphore only
+// gates mutating (POST/PUT/DELETE) requests, that GET bypasses it, and that
+// max_concurrent=0 disables gating entirely.
+func TestMakeRequest_SemaphoreGating(t *testing.T) {
+	// run fires n concurrent makeRequest calls with the given method and
+	// max_concurrent value. Each request blocks inside the transport until
+	// released, so we can observe the peak number simultaneously in flight.
+	run := func(method string, maxConcurrent int64, n int) int32 {
+		var inFlight, maxInFlight int32
+		release := make(chan struct{})
+
+		client := NewAPIClient("https://test.example.com", "cust", "tok", nil, maxConcurrent, false, false, nil, "test-agent")
+		client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			cur := atomic.AddInt32(&inFlight, 1)
+			for {
+				m := atomic.LoadInt32(&maxInFlight)
+				if cur <= m || atomic.CompareAndSwapInt32(&maxInFlight, m, cur) {
+					break
+				}
+			}
+			<-release // hold the slot so concurrent requests overlap
+			atomic.AddInt32(&inFlight, -1)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(bytes.NewReader(nil)),
+				Header:     make(http.Header),
+			}, nil
+		})
+
+		// The peak we expect to observe: capped for gated mutating requests,
+		// otherwise all n.
+		expected := int32(n)
+		if maxConcurrent > 0 && method != http.MethodGet && int64(n) > maxConcurrent {
+			expected = int32(maxConcurrent)
+		}
+
+		var wg sync.WaitGroup
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				resp, err := client.makeRequest(context.Background(), method, "/test", nil)
+				if err == nil && resp != nil {
+					resp.Body.Close()
+				}
+			}()
+		}
+
+		// Wait until in-flight requests reach the expected ceiling, then give a
+		// short grace period to catch any that should have been blocked.
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) && atomic.LoadInt32(&inFlight) < expected {
+			time.Sleep(5 * time.Millisecond)
+		}
+		time.Sleep(50 * time.Millisecond)
+		peak := atomic.LoadInt32(&maxInFlight)
+
+		close(release)
+		wg.Wait()
+		return peak
+	}
+
+	t.Run("mutating requests are capped at max_concurrent", func(t *testing.T) {
+		if peak := run(http.MethodPost, 2, 6); peak != 2 {
+			t.Errorf("expected at most 2 concurrent POST requests, got %d", peak)
+		}
+	})
+
+	t.Run("GET requests bypass the semaphore", func(t *testing.T) {
+		if peak := run(http.MethodGet, 2, 6); peak != 6 {
+			t.Errorf("expected all 6 GET requests in flight (semaphore bypassed), got %d", peak)
+		}
+	})
+
+	t.Run("max_concurrent=0 disables the semaphore", func(t *testing.T) {
+		if peak := run(http.MethodPost, 0, 6); peak != 6 {
+			t.Errorf("expected all 6 POST requests in flight (semaphore disabled), got %d", peak)
+		}
+	})
+}
+
 func TestMakeRequest_429RetryWithRetryAfterHeader(t *testing.T) {
 	var callCount int32
-	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, false, false, nil, "test-agent")
+	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, 0, false, false, nil, "test-agent")
 	client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		attempt := atomic.AddInt32(&callCount, 1)
 		if attempt == 1 {
@@ -135,7 +217,7 @@ func TestMakeRequest_429RetryWithRetryAfterHeader(t *testing.T) {
 
 func TestMakeRequest_429RetriesExhausted(t *testing.T) {
 	var callCount int32
-	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, false, false, nil, "test-agent")
+	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, 0, false, false, nil, "test-agent")
 	client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		atomic.AddInt32(&callCount, 1)
 		// Always return 429
@@ -165,7 +247,7 @@ func TestMakeRequest_429RetriesExhausted(t *testing.T) {
 func TestMakeRequest_429RetryWithBody(t *testing.T) {
 	var callCount int32
 	var lastBody string
-	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, false, false, nil, "test-agent")
+	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, 0, false, false, nil, "test-agent")
 	client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		attempt := atomic.AddInt32(&callCount, 1)
 		if req.Body != nil {
@@ -224,7 +306,7 @@ func TestMakeRequest_429RetryWithBody(t *testing.T) {
 }
 
 func TestMakeRequest_429RetryContextCancelled(t *testing.T) {
-	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, false, false, nil, "test-agent")
+	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, 0, false, false, nil, "test-agent")
 	client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		header := make(http.Header)
 		header.Set("Retry-After", "60") // Long wait
@@ -260,7 +342,7 @@ func TestMakeRequest_307RegionalRedirect(t *testing.T) {
 		]
 	}`
 
-	client := NewAPIClient("https://api.cloud.com/accessSecurity", "cust-123", "tok-abc", nil, false, false, nil, "test-agent")
+	client := NewAPIClient("https://api.cloud.com/accessSecurity", "cust-123", "tok-abc", nil, 0, false, false, nil, "test-agent")
 	client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		header := make(http.Header)
 		header.Set("Location", "https://api-eu.cloud.com/feature-data_accesssecurity/sessionPolicy")
@@ -304,7 +386,7 @@ func TestMakeRequest_307UntrustedLocationHost(t *testing.T) {
 		]
 	}`
 
-	client := NewAPIClient("https://api.cloud.com/accessSecurity", "cust-123", "tok-abc", nil, false, false, nil, "test-agent")
+	client := NewAPIClient("https://api.cloud.com/accessSecurity", "cust-123", "tok-abc", nil, 0, false, false, nil, "test-agent")
 	client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		header := make(http.Header)
 		header.Set("Location", "https://evil.example.com/accessSecurity")
@@ -342,7 +424,7 @@ func TestMakeRequest_307MissingLocationHeader(t *testing.T) {
 		]
 	}`
 
-	client := NewAPIClient("https://api.cloud.com/accessSecurity", "cust-123", "tok-abc", nil, false, false, nil, "test-agent")
+	client := NewAPIClient("https://api.cloud.com/accessSecurity", "cust-123", "tok-abc", nil, 0, false, false, nil, "test-agent")
 	client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusTemporaryRedirect,
@@ -373,7 +455,7 @@ func TestMakeRequest_307MissingLocationHeader(t *testing.T) {
 // newTestClientWithStatus creates an APIClient whose transport always returns
 // the given status code with an empty JSON body.
 func newTestClientWithStatus(statusCode int) *APIClient {
-	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, false, false, nil, "test-agent")
+	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, 0, false, false, nil, "test-agent")
 	client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: statusCode,

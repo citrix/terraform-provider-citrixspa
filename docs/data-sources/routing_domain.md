@@ -1,10 +1,10 @@
 ---
-page_title: "spa_routing_domain Data Source - spa"
+page_title: "citrixspa_routing_domain Data Source - citrixspa"
 description: |-
   Fetches a single SPA routing domain by FQDN.
 ---
 
-# spa_routing_domain (Data Source)
+# citrixspa_routing_domain (Data Source)
 
 Fetches a single SPA routing domain by its FQDN.
 
@@ -13,7 +13,7 @@ For more details on the underlying API, see the [Application Domains API documen
 ## Example Usage
 
 ```terraform
-data "spa_routing_domain" "example" {
+data "citrixspa_routing_domain" "example" {
   fqdn = "intranet.example.com"
 }
 ```

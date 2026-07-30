@@ -54,7 +54,7 @@ TF_CLI_ARGS_apply="-parallelism=1" TF_CLI_ARGS_plan="-parallelism=1" TF_ACC=1 go
 - **Manual apply with debug logging example**:
 
 ```bash
-TF_LOG=DEBUG TF_LOG_PATH=terraform-debug.log terraform apply -refresh=false -target='spa_application.app'
+TF_LOG=DEBUG TF_LOG_PATH=terraform-debug.log terraform apply -refresh=false -target='citrixspa_application.app'
 ```
 
 - Test configs: `test-local/` (direct token), `test-local-sp/` (service principal)
@@ -134,26 +134,26 @@ Service principal OAuth2 endpoint: `POST {token_url}/cctrustoauth2/{customerId}/
 
 ## Resources (managed)
 
-- `spa_application` — Web, SaaS, ZTNA applications
-- `spa_access_policy` — Access policies with rules/conditions
-- `spa_routing_domain` — Routing domains (keyed by FQDN)
-- `spa_security_group` — Security groups
-- `spa_certificate` — SSL certificates
-- `spa_browser_mode` — Browser mode configuration
-- `spa_terminate_machine_access` — Machine access termination
-- `spa_terminate_user_access` — User access termination
+- `citrixspa_application` — Web, SaaS, ZTNA applications
+- `citrixspa_access_policy` — Access policies with rules/conditions
+- `citrixspa_routing_domain` — Routing domains (keyed by FQDN)
+- `citrixspa_security_group` — Security groups
+- `citrixspa_certificate` — SSL certificates
+- `citrixspa_browser_mode` — Browser mode configuration
+- `citrixspa_terminate_machine_access` — Machine access termination
+- `citrixspa_terminate_user_access` — User access termination
 
 ## Data Sources (read-only)
 
-- `spa_application` / `spa_applications`
-- `spa_access_policy` / `spa_access_policies`
-- `spa_routing_domain` / `spa_routing_domains`
-- `spa_security_group` / `spa_security_groups`
-- `spa_certificates`
-- `spa_browser_mode`
-- `spa_hybrid_config`
-- `spa_last_activity`
-- `spa_terminate_machine_access` / `spa_terminate_user_access`
+- `citrixspa_application` / `citrixspa_applications`
+- `citrixspa_access_policy` / `citrixspa_access_policies`
+- `citrixspa_routing_domain` / `citrixspa_routing_domains`
+- `citrixspa_security_group` / `citrixspa_security_groups`
+- `citrixspa_certificates`
+- `citrixspa_browser_mode`
+- `citrixspa_hybrid_config`
+- `citrixspa_last_activity`
+- `citrixspa_terminate_machine_access` / `citrixspa_terminate_user_access`
 
 ## Environment Variables
 

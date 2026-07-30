@@ -1,10 +1,10 @@
 ---
-page_title: "spa_routing_domains Data Source - spa"
+page_title: "citrixspa_routing_domains Data Source - citrixspa"
 description: |-
   Fetches a list of all SPA routing domains.
 ---
 
-# spa_routing_domains (Data Source)
+# citrixspa_routing_domains (Data Source)
 
 Fetches a paginated list of all SPA routing domains.
 
@@ -14,10 +14,10 @@ For more details on the underlying API, see the [Application Domains API documen
 
 ```terraform
 # Fetch all routing domains
-data "spa_routing_domains" "all" {}
+data "citrixspa_routing_domains" "all" {}
 
 # Fetch with pagination
-data "spa_routing_domains" "page" {
+data "citrixspa_routing_domains" "page" {
   offset = 0
   limit  = 50
 }

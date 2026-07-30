@@ -1,10 +1,10 @@
 ---
-page_title: "spa_session_policies Data Source - spa"
+page_title: "citrixspa_session_policies Data Source - citrixspa"
 description: |-
   Fetches a list of SPA session policies.
 ---
 
-# spa_session_policies (Data Source)
+# citrixspa_session_policies (Data Source)
 
 Fetches a paginated list of SPA session policies, including their rules, conditions, and actions.
 
@@ -12,10 +12,10 @@ Fetches a paginated list of SPA session policies, including their rules, conditi
 
 ```terraform
 # Fetch all session policies
-data "spa_session_policies" "all" {}
+data "citrixspa_session_policies" "all" {}
 
 # Fetch with name filter and pagination
-data "spa_session_policies" "filtered" {
+data "citrixspa_session_policies" "filtered" {
   name    = "Route external"
   orderby = "name"
   offset  = 0
@@ -23,7 +23,7 @@ data "spa_session_policies" "filtered" {
 }
 
 output "session_policy_ids" {
-  value = data.spa_session_policies.all.session_policies[*].id
+  value = data.citrixspa_session_policies.all.session_policies[*].id
 }
 ```
 

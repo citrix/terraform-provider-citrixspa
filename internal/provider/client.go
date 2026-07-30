@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"golang.org/x/sync/semaphore"
 	"golang.org/x/time/rate"
 )
 
@@ -184,18 +185,24 @@ type APIClient struct {
 	CustomerID               string
 	AuthToken                string
 	HTTPClient               *http.Client
-	Limiter                  *rate.Limiter // Rate limiter for API requests
-	tokenProvider            TokenProvider // Token provider for getting auth tokens
-	FetchDetailsOnList       bool          // When true, detailed listing methods will fetch individual item details
-	SuppressASBNotifications bool          // When true, suppress ASB notifications on API requests
-	UserAgent                string        // Custom User-Agent header for API requests
+	Limiter                  *rate.Limiter       // Rate limiter for API requests
+	Semaphore                *semaphore.Weighted // Concurrency limiter for parallel requests
+	tokenProvider            TokenProvider       // Token provider for getting auth tokens
+	FetchDetailsOnList       bool                // When true, detailed listing methods will fetch individual item details
+	SuppressASBNotifications bool                // When true, suppress ASB notifications on API requests
+	UserAgent                string              // Custom User-Agent header for API requests
 	Metrics                  *PerformanceMetrics
 }
 
 // Ensure APIClient implements SPAClient
 var _ SPAClient = (*APIClient)(nil)
 
-func NewAPIClient(baseURL, customerID, authToken string, limiter *rate.Limiter, fetchDetailsOnList bool, suppressASBNotifications bool, tp TokenProvider, userAgent string) *APIClient {
+func NewAPIClient(baseURL, customerID, authToken string, limiter *rate.Limiter, maxConcurrent int64, fetchDetailsOnList bool, suppressASBNotifications bool, tp TokenProvider, userAgent string) *APIClient {
+	var sem *semaphore.Weighted
+	if maxConcurrent > 0 {
+		sem = semaphore.NewWeighted(maxConcurrent)
+	}
+
 	p := &APIClient{
 		BaseURL:    strings.TrimSuffix(baseURL, "/"), // Ensure no trailing slash
 		CustomerID: customerID,
@@ -209,6 +216,7 @@ func NewAPIClient(baseURL, customerID, authToken string, limiter *rate.Limiter, 
 			},
 		},
 		Limiter:                  limiter,
+		Semaphore:                sem,
 		FetchDetailsOnList:       fetchDetailsOnList,       // Set the flag for detailed listing
 		SuppressASBNotifications: suppressASBNotifications, // Set the flag for suppressing ASB notifications
 		tokenProvider:            tp,                       // Set the token provider for dynamic token management
@@ -239,6 +247,19 @@ type redirectErrorResponse struct {
 
 // makeRequest performs an HTTP request with proper headers and error handling
 func (c *APIClient) makeRequest(ctx context.Context, method, path string, body any) (*http.Response, error) {
+	// Acquire semaphore slot for mutating operations only (POST, PUT, DELETE).
+	// GET requests are not limited as the backend handles read operations more efficiently.
+	// NOTE: the slot is deliberately held for the entire call — including the 429
+	// retry/backoff loop below — so that max_concurrent also bounds retry throughput
+	// and applies global backpressure when the API is rate-limiting us, rather than
+	// releasing the slot for another request to pile on during backoff.
+	if c.Semaphore != nil && method != http.MethodGet {
+		if err := c.Semaphore.Acquire(ctx, 1); err != nil {
+			return nil, fmt.Errorf("failed to acquire concurrency semaphore: %w", err)
+		}
+		defer c.Semaphore.Release(1)
+	}
+
 	requestStart := time.Now()
 	c.Metrics.TotalRequests.Add(1)
 
@@ -438,7 +459,16 @@ func (c *APIClient) makeRequest(ctx context.Context, method, path string, body a
 			return resp, nil
 		}
 
-		// Handle 429 Too Many Requests - drain and close the body so the transport can reuse the connection.
+		// Handle 429 Too Many Requests
+		tflog.Warn(ctx, "spa-terraform-provider: 429 rate limit hit", map[string]any{
+			"attempt":        attempt + 1,
+			"max_retries":    maxRetries,
+			"method":         method,
+			"url":            fullURL,
+			"transaction_id": transactionID,
+		})
+
+		// Drain and close the body so the transport can reuse the connection.
 		rateLimitHitsThisRequest++
 		c.Metrics.RateLimitHits.Add(1)
 		if resp.Body != nil {

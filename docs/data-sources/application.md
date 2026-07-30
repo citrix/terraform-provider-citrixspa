@@ -1,10 +1,10 @@
 ---
-page_title: "spa_application Data Source - spa"
+page_title: "citrixspa_application Data Source - citrixspa"
 description: |-
   Fetches a single SPA application by ID or name.
 ---
 
-# spa_application (Data Source)
+# citrixspa_application (Data Source)
 
 Fetches a single SPA application by ID or name. When looking up by name, the name must match exactly one application.
 
@@ -14,12 +14,12 @@ For more details on the underlying API, see the [Applications API documentation]
 
 ```terraform
 # Look up by ID
-data "spa_application" "by_id" {
+data "citrixspa_application" "by_id" {
   id = "00000000-0000-0000-0000-000000000000"
 }
 
 # Look up by name
-data "spa_application" "by_name" {
+data "citrixspa_application" "by_name" {
   name = "My Web Application"
 }
 ```

@@ -1,10 +1,10 @@
 ---
-page_title: "spa_session_policy Data Source - spa"
+page_title: "citrixspa_session_policy Data Source - citrixspa"
 description: |-
   Fetches a single SPA session policy by ID or name.
 ---
 
-# spa_session_policy (Data Source)
+# citrixspa_session_policy (Data Source)
 
 Fetches a single SPA session policy by ID or name. When looking up by name, the name must match exactly one policy.
 
@@ -12,12 +12,12 @@ Fetches a single SPA session policy by ID or name. When looking up by name, the 
 
 ```terraform
 # Look up by ID
-data "spa_session_policy" "by_id" {
+data "citrixspa_session_policy" "by_id" {
   id = "00000000-0000-0000-0000-000000000000"
 }
 
 # Look up by name
-data "spa_session_policy" "by_name" {
+data "citrixspa_session_policy" "by_name" {
   name = "Route external users"
 }
 ```

@@ -82,13 +82,13 @@ generate_discovery_config() {
 
 terraform {
   required_providers {
-    spa = {
+    citrixspa = {
       source = "citrix/citrixspa"
     }
   }
 }
 
-provider "spa" {
+provider "citrixspa" {
   base_url      = var.base_url
   customer_id   = var.citrix_customer_id
   client_id     = var.citrix_client_id
@@ -122,18 +122,18 @@ variable "citrix_client_secret" {
 }
 
 # Data sources for discovery
-data "spa_applications" "all_apps" {
+data "citrixspa_applications" "all_apps" {
   offset = 0
   limit  = 100
 }
 
 output "discovered_applications" {
-  value = data.spa_applications.all_apps.applications[*].id
+  value = data.citrixspa_applications.all_apps.applications[*].id
   description = "IDs of all discovered applications"
 }
 
 output "discovered_application_names" {
-  value = data.spa_applications.all_apps.applications[*].name
+  value = data.citrixspa_applications.all_apps.applications[*].name
   description = "Names of all discovered applications"
 }
 
@@ -198,13 +198,13 @@ generate_main_config() {
     cat > main.tf << 'EOF'
 terraform {
   required_providers {
-    spa = {
+    citrixspa = {
       source = "citrix/citrixspa"
     }
   }
 }
 
-provider "spa" {
+provider "citrixspa" {
   base_url      = var.base_url
   customer_id   = var.citrix_customer_id
   client_id     = var.citrix_client_id
@@ -259,9 +259,9 @@ EOF
             print_debug "Adding resource block for application: $app_id"
             cat >> main.tf << EOF
 
-resource "spa_application" "imported_app_$app_count" {
+resource "citrixspa_application" "imported_app_$app_count" {
   # This resource will be populated after import
-  # Import with: terraform import spa_application.imported_app_$app_count $app_id
+  # Import with: terraform import citrixspa_application.imported_app_$app_count $app_id
 }
 EOF
         fi
@@ -308,8 +308,8 @@ EOF
             print_debug "Adding import command for application: $app_id"
             cat >> import_resources.sh << EOF
 print_status "Importing application: $app_id"
-print_debug "Running: terraform import spa_application.imported_app_$app_count $app_id"
-terraform import spa_application.imported_app_$app_count "$app_id" || print_error "Failed to import application $app_id"
+print_debug "Running: terraform import citrixspa_application.imported_app_$app_count $app_id"
+terraform import citrixspa_application.imported_app_$app_count "$app_id" || print_error "Failed to import application $app_id"
 
 EOF
         fi
@@ -319,8 +319,8 @@ EOF
     print_debug "Adding browser mode import command"
     cat >> import_resources.sh << 'EOF'
 print_status "Importing browser mode configuration"
-print_debug "Running: terraform import spa_browser_mode.browser_mode browser_mode"
-terraform import spa_browser_mode.browser_mode browser_mode || print_error "Failed to import browser mode"
+print_debug "Running: terraform import citrixspa_browser_mode.browser_mode browser_mode"
+terraform import citrixspa_browser_mode.browser_mode browser_mode || print_error "Failed to import browser mode"
 
 print_status "Import script completed"
 print_status "Run 'terraform plan' to verify the imported resources"

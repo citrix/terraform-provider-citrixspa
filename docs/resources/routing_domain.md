@@ -1,10 +1,10 @@
 ---
-page_title: "spa_routing_domain Resource - spa"
+page_title: "citrixspa_routing_domain Resource - citrixspa"
 description: |-
   Resource for creating and managing SPA routing domains.
 ---
 
-# spa_routing_domain (Resource)
+# citrixspa_routing_domain (Resource)
 
 Resource for creating and managing SPA routing domains. A routing domain defines how traffic for a specific FQDN is routed.
 
@@ -17,7 +17,7 @@ For more details on the underlying API, see the [Application Domains API documen
 ## Example Usage
 
 ```terraform
-resource "spa_routing_domain" "intranet_example_com" {
+resource "citrixspa_routing_domain" "intranet_example_com" {
   fqdn = "intranet.example.com"
   type = "internal"
 
@@ -55,5 +55,5 @@ resource "spa_routing_domain" "intranet_example_com" {
 Import is supported using the FQDN:
 
 ```shell
-terraform import spa_routing_domain.internal intranet.example.com
+terraform import citrixspa_routing_domain.internal intranet.example.com
 ```

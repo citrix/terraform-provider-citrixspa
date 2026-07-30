@@ -1,13 +1,13 @@
 terraform {
   required_providers {
-    spa = {
+    citrixspa = {
       source  = "registry.terraform.io/citrix/citrixspa"
-      version = "0.1.0"
+      version = "1.1.0"
     }
   }
 }
 
-provider "spa" {
+provider "citrixspa" {
   # Configuration options
   base_url    = var.base_url
   customer_id = var.citrix_customer_id
@@ -42,7 +42,7 @@ variable "citrix_client_secret" {
 }
 
 # Example: Create a simple resource for testing
-resource "spa_application" "test_app" {
+resource "citrixspa_application" "test_app" {
   name = "Test Application - Service Principal Auth"
   type = "web"
   # Add other required attributes based on your resource schema
@@ -50,7 +50,7 @@ resource "spa_application" "test_app" {
 
 # Output to verify the test
 output "test_app_id" {
-  value = spa_application.test_app.id
+  value = citrixspa_application.test_app.id
 }
 
 output "provider_test_status" {

@@ -31,7 +31,7 @@ The provider supports two authentication methods. Use **only one** at a time.
 ### Service Principal (recommended)
 
 ```hcl
-provider "spa" {
+provider "citrixspa" {
   customer_id   = "your-customer-id"
   client_id     = "your-client-id"
   client_secret = "your-client-secret"
@@ -49,7 +49,7 @@ export CITRIX_CLIENT_SECRET="your-client-secret"
 ### Direct Auth Token
 
 ```hcl
-provider "spa" {
+provider "citrixspa" {
   customer_id = "your-customer-id"
   auth_token  = "your-auth-token"
 }
@@ -67,13 +67,13 @@ export CITRIX_AUTH_TOKEN="your-auth-token"
 ```hcl
 terraform {
   required_providers {
-    spa = {
+    citrixspa = {
       source = "citrix/citrixspa"
     }
   }
 }
 
-provider "spa" {
+provider "citrixspa" {
   customer_id   = var.citrix_customer_id
   client_id     = var.citrix_client_id
   client_secret = var.citrix_client_secret
@@ -102,28 +102,7 @@ The primary use case for this provider is migrating an SPA configuration from on
 ### Step 0 — Prerequisites
 
 - Install [Terraform](https://developer.hashicorp.com/terraform/downloads) on your machine.
-- If the `citrix/citrixspa` provider is not available in the public registry for your architecture, download the provider binary zip for your platform and extract it into the Terraform plugin directory:
-
-  ```powershell
-  # Example for Windows AMD64 — adjust the path and version as needed
-  $pluginDir = "$env:APPDATA\terraform.d\plugins\registry.terraform.io\citrix\spa\<version>\windows_amd64"
-  New-Item -Path $pluginDir -ItemType Directory -Force
-  Expand-Archive "terraform-provider-citrixspa_<version>_windows_amd64.zip" -DestinationPath $pluginDir -Force
-  ```
-
-  Then create (or update) `C:\Users\<you>\.terraformrc` so Terraform uses the local copy:
-
-  ```hcl
-  provider_installation {
-    filesystem_mirror {
-      path    = "C:/Users/<you>/AppData/Roaming/terraform.d/plugins"
-      include = ["citrix/citrixspa"]
-    }
-    direct {
-      exclude = ["citrix/citrixspa"]
-    }
-  }
-  ```
+- The `citrix/citrixspa` provider is published to the public [Terraform Registry](https://registry.terraform.io/providers/citrix/citrixspa/latest) and is installed automatically when you run `terraform init` (see Step 5). No manual download is required.
 
 ### Step 1 — Create Working Folders
 

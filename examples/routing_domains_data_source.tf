@@ -1,13 +1,13 @@
 terraform {
   required_providers {
-    spa = {
-      source = "code.citrite.net/csvc/spa-sdk/terraform-provider-spa"
+    citrixspa = {
+      source = "citrix/citrixspa"
     }
   }
 }
 
 # Configure the SPA Provider
-provider "spa" {
+provider "citrixspa" {
   # Configuration can be provided via environment variables:
   # CITRIX_CUSTOMER_ID
   # CITRIX_AUTH_TOKEN (or CITRIX_CLIENT_ID + CITRIX_CLIENT_SECRET)
@@ -15,7 +15,7 @@ provider "spa" {
 }
 
 # Data source for listing all routing domains
-data "spa_routing_domains" "all" {
+data "citrixspa_routing_domains" "all" {
   # Optional pagination parameters
   # offset = 0
   # limit = 100
@@ -23,13 +23,13 @@ data "spa_routing_domains" "all" {
 
 # Output the routing domains
 output "routing_domains" {
-  value = data.spa_routing_domains.all.routing_domains
+  value = data.citrixspa_routing_domains.all.routing_domains
 }
 
 output "routing_domains_count" {
-  value = data.spa_routing_domains.all.count
+  value = length(data.citrixspa_routing_domains.all.routing_domains)
 }
 
 output "routing_domains_total" {
-  value = data.spa_routing_domains.all.total
+  value = data.citrixspa_routing_domains.all.total
 }

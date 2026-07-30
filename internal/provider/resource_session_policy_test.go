@@ -385,7 +385,7 @@ func TestSessionPolicyConditionRoundtrip(t *testing.T) {
 // Actions include routing and local_lan_access as required by the test tenant configuration.
 func testAccSessionPolicyConfig_basic(name string) string {
 	return fmt.Sprintf(`
-resource "spa_session_policy" "test" {
+resource "citrixspa_session_policy" "test" {
   name        = %q
   description = "Terraform acceptance test - basic session policy"
   active      = false
@@ -419,7 +419,7 @@ resource "spa_session_policy" "test" {
 // description, active state, and rule name so that the Update path is exercised.
 func testAccSessionPolicyConfig_updated(name string) string {
 	return fmt.Sprintf(`
-resource "spa_session_policy" "test" {
+resource "citrixspa_session_policy" "test" {
   name        = %q
   description = "Terraform acceptance test - session policy UPDATED"
   active      = true
@@ -453,7 +453,7 @@ resource "spa_session_policy" "test" {
 // rules to verify that list-of-rules is handled correctly.
 func testAccSessionPolicyConfig_multipleRules(name string) string {
 	return fmt.Sprintf(`
-resource "spa_session_policy" "multi" {
+resource "citrixspa_session_policy" "multi" {
   name        = %q
   description = "Terraform acceptance test - multiple rules"
   active      = false
@@ -534,7 +534,7 @@ func testAccCheckSessionPolicyDestroy(s *terraform.State) error {
 	ctx := context.Background()
 
 	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "spa_session_policy" {
+		if rs.Type != "citrixspa_session_policy" {
 			continue
 		}
 
@@ -603,44 +603,49 @@ func TestAccSessionPolicy_basic(t *testing.T) {
 			{
 				Config: testAccSessionPolicyConfig_basic(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSessionPolicyExistsInAPI("spa_session_policy.test"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "name", name),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "description", "Terraform acceptance test - basic session policy"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "active", "false"),
-					resource.TestCheckResourceAttrSet("spa_session_policy.test", "id"),
+					testAccCheckSessionPolicyExistsInAPI("citrixspa_session_policy.test"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "description", "Terraform acceptance test - basic session policy"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "active", "false"),
+					resource.TestCheckResourceAttrSet("citrixspa_session_policy.test", "id"),
 					// priority is computed; it must be set after create
-					resource.TestCheckResourceAttrSet("spa_session_policy.test", "priority"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.#", "1"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.name", "Default Rule"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.description", "Allow all users"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.priority", "1"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.active", "true"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.condition.#", "1"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.condition.0.type", "TYPE_PLATFORM"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.condition.0.operator", "OPERATOR_IN"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.condition.0.values.#", "1"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.condition.0.values.0", "PLATFORM_FILTER_PC"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.actions.routing", "default"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.actions.local_lan_access", "enabled"),
+					resource.TestCheckResourceAttrSet("citrixspa_session_policy.test", "priority"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.name", "Default Rule"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.description", "Allow all users"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.priority", "1"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.active", "true"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.condition.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.condition.0.type", "TYPE_PLATFORM"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.condition.0.operator", "OPERATOR_IN"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.condition.0.values.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.condition.0.values.0", "PLATFORM_FILTER_PC"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.actions.routing", "default"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.actions.local_lan_access", "enabled"),
 				),
 			},
-			// Step 2: Update — description, active flag, rule name
+			// Step 2: Idempotency — re-applying the create config yields an empty plan
+			{
+				Config:   testAccSessionPolicyConfig_basic(name),
+				PlanOnly: true,
+			},
+			// Step 3: Update — description, active flag, rule name
 			{
 				Config: testAccSessionPolicyConfig_updated(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSessionPolicyExistsInAPI("spa_session_policy.test"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "name", name),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "description", "Terraform acceptance test - session policy UPDATED"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "active", "true"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.#", "1"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.name", "Updated Rule"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.description", "Updated description"),
-					resource.TestCheckResourceAttr("spa_session_policy.test", "generic_rules.0.active", "false"),
+					testAccCheckSessionPolicyExistsInAPI("citrixspa_session_policy.test"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "description", "Terraform acceptance test - session policy UPDATED"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "active", "true"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.name", "Updated Rule"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.description", "Updated description"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.test", "generic_rules.0.active", "false"),
 				),
 			},
-			// Step 3: Import — verifies the state round-trips correctly.
+			// Step 4: Import — verifies the state round-trips correctly.
 			{
-				ResourceName:      "spa_session_policy.test",
+				ResourceName:      "citrixspa_session_policy.test",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -664,21 +669,21 @@ func TestAccSessionPolicy_multipleRules(t *testing.T) {
 			{
 				Config: testAccSessionPolicyConfig_multipleRules(name),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					testAccCheckSessionPolicyExistsInAPI("spa_session_policy.multi"),
-					resource.TestCheckResourceAttr("spa_session_policy.multi", "name", name),
-					resource.TestCheckResourceAttr("spa_session_policy.multi", "generic_rules.#", "2"),
-					resource.TestCheckResourceAttr("spa_session_policy.multi", "generic_rules.0.name", "Rule One"),
-					resource.TestCheckResourceAttr("spa_session_policy.multi", "generic_rules.0.priority", "1"),
-					resource.TestCheckResourceAttr("spa_session_policy.multi", "generic_rules.0.active", "true"),
-					resource.TestCheckResourceAttr("spa_session_policy.multi", "generic_rules.1.name", "Rule Two"),
-					resource.TestCheckResourceAttr("spa_session_policy.multi", "generic_rules.1.priority", "2"),
-					resource.TestCheckResourceAttr("spa_session_policy.multi", "generic_rules.1.active", "false"),
-					resource.TestCheckResourceAttrSet("spa_session_policy.multi", "id"),
+					testAccCheckSessionPolicyExistsInAPI("citrixspa_session_policy.multi"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.multi", "name", name),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.multi", "generic_rules.#", "2"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.multi", "generic_rules.0.name", "Rule One"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.multi", "generic_rules.0.priority", "1"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.multi", "generic_rules.0.active", "true"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.multi", "generic_rules.1.name", "Rule Two"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.multi", "generic_rules.1.priority", "2"),
+					resource.TestCheckResourceAttr("citrixspa_session_policy.multi", "generic_rules.1.active", "false"),
+					resource.TestCheckResourceAttrSet("citrixspa_session_policy.multi", "id"),
 				),
 			},
 			// Import must round-trip all rules.
 			{
-				ResourceName:      "spa_session_policy.multi",
+				ResourceName:      "citrixspa_session_policy.multi",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
