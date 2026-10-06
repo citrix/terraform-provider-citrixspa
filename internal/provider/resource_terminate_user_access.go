@@ -6,6 +6,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -53,12 +56,20 @@ func (r *TerminateUserAccessResource) Schema(ctx context.Context, req resource.S
 				Required:            true,
 			},
 			"email": schema.StringAttribute{
-				MarkdownDescription: "Email address of the user",
-				Required:            true,
+				MarkdownDescription: "Email address of the user. Optional; the SPA service does not require it.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"domain_name": schema.StringAttribute{
-				MarkdownDescription: "Domain name for the user access termination",
-				Required:            true,
+				MarkdownDescription: "Domain name for the user access termination. Optional; the SPA service does not require it.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"object_id": schema.StringAttribute{
 				MarkdownDescription: "Object ID for the user access termination",
@@ -69,8 +80,12 @@ func (r *TerminateUserAccessResource) Schema(ctx context.Context, req resource.S
 				Required:            true,
 			},
 			"duration": schema.Int64Attribute{
-				MarkdownDescription: "Duration in days for the user access termination",
-				Required:            true,
+				MarkdownDescription: "Duration in days for the user access termination. Optional; the SPA service does not require it.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -121,14 +136,30 @@ func (r *TerminateUserAccessResource) Create(ctx context.Context, req resource.C
 		return
 	}
 
-	// Update the model with the response data
-	data.ID = types.StringValue(createdUser.ID)
-	data.AccountName = types.StringValue(createdUser.AccountName)
-	data.Email = types.StringValue(createdUser.Email)
-	data.DomainName = types.StringValue(createdUser.DomainName)
-	data.ObjectID = types.StringValue(createdUser.ObjectID)
-	data.IDPType = types.StringValue(createdUser.IDPType)
-	data.Duration = types.Int64Value(int64(createdUser.Duration))
+	// The create API only echoes back id and object_id, so re-read the full
+	// stored record to resolve any omitted (unknown) optional/computed fields. If
+	// the record is not yet visible in the list API (eventual consistency) or the
+	// list call fails, fall back to the create response rather than failing apply.
+	storedUser, err := r.client.GetTerminateUserAccessByID(ctx, createdUser.ID)
+	if err != nil {
+		tflog.Warn(ctx, "spa-terraform-provider: terminate user access not readable immediately after create; using create response", map[string]any{"id": createdUser.ID})
+		storedUser = createdUser
+	}
+
+	// The server-assigned ID is authoritative. Required identity fields keep their
+	// configured (plan) values. For optional/computed fields, preserve the
+	// user-configured value and only fall back to the stored record when the
+	// configuration omitted the field (left it unknown).
+	data.ID = types.StringValue(storedUser.ID)
+	if data.Email.IsUnknown() {
+		data.Email = types.StringValue(storedUser.Email)
+	}
+	if data.DomainName.IsUnknown() {
+		data.DomainName = types.StringValue(storedUser.DomainName)
+	}
+	if data.Duration.IsUnknown() {
+		data.Duration = types.Int64Value(int64(storedUser.Duration))
+	}
 
 	// Write logs using the tflog package
 	tflog.Trace(ctx, "spa-terraform-provider: created a terminate user access resource")

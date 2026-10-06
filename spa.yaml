@@ -7534,16 +7534,16 @@ components:
           maxItems: 2
           type: array
         type:
-          description: 'Type of routing entry: internal, external, external_via_connector,
-            conflicting, internal_bypass_proxy, internal_via_gateway. Hybrid allows
-            only internal and external'
+          description: 'Type of routing entry: internal, external, conflicting,
+            internal_bypass_proxy, internal_via_gateway, external_fixed_ip. Hybrid
+            allows only internal, external, and external_fixed_ip'
           enum:
           - internal
           - external
-          - external_via_connector
           - conflicting
           - internal_bypass_proxy
           - internal_via_gateway
+          - external_fixed_ip
           example: internal
           type: string
       required:

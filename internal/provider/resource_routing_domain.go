@@ -3,10 +3,11 @@ package provider
 import (
 	"context"
 	"fmt"
-	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -49,7 +50,7 @@ func (r *RoutingDomainResource) Schema(ctx context.Context, req resource.SchemaR
 				Required:            true,
 			},
 			"type": schema.StringAttribute{
-				MarkdownDescription: "Type of routing entry (internal, external, external_via_connector, conflicting, internal_bypass_proxy)",
+				MarkdownDescription: "Type of routing entry (internal, external, conflicting, internal_bypass_proxy, internal_via_gateway, external_fixed_ip)",
 				Required:            true,
 			},
 			"app_type": schema.StringAttribute{
@@ -150,38 +151,63 @@ func (r *RoutingDomainResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	// Read the full routing domain data to populate all computed fields including location_ids
-	readReq := resource.ReadRequest{
-		State: resp.State,
-	}
-	readResp := &resource.ReadResponse{
-		State: resp.State,
-	}
-
-	r.Read(ctx, readReq, readResp)
-
-	// Copy any diagnostics and the updated state
-	resp.Diagnostics.Append(readResp.Diagnostics...)
-	resp.State = readResp.State
+	// Read the full routing domain data to populate all computed fields including
+	// location_ids. postCreate is true: a 404 here is a read-back failure on a
+	// routing domain that was just created, not out-of-band drift.
+	r.read(ctx, resp.State, &resp.State, &resp.Diagnostics, true)
 }
 
 func (r *RoutingDomainResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	r.read(ctx, req.State, &resp.State, &resp.Diagnostics, false)
+}
+
+// read refreshes a routing domain from the API into dst. It backs both Read and
+// the post-create refresh in Create, which differ only in how a 404 is handled:
+// on a refresh the routing domain is genuinely gone and must leave state, but
+// straight after a successful create a 404 means the backend has not converged
+// yet, and neither blaming an application cascade nor dropping the resource
+// would be correct.
+func (r *RoutingDomainResource) read(ctx context.Context, src tfsdk.State, dst *tfsdk.State, diags *diag.Diagnostics, postCreate bool) {
 	tflog.Debug(ctx, "spa-terraform-provider: RoutingDomainResource.Read - Reading routing domain")
 	var data RoutingDomainResourceModel
 
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
+	diags.Append(src.Get(ctx, &data)...)
+	if diags.HasError() {
 		return
 	}
 
 	// Get the routing domain from the API
 	rd, err := r.client.GetRoutingDomain(ctx, data.FQDN.ValueString())
 	if err != nil {
-		if strings.Contains(err.Error(), "404") {
-			resp.State.RemoveResource(ctx)
+		if IsNotFound(err) {
+			if postCreate {
+				// Keep the state written by Create: the routing domain exists, the
+				// API just has not made it readable yet. Removing it here would
+				// fail the apply with "Missing Resource State After Create".
+				diags.AddWarning(
+					"Routing Domain Not Readable After Creation",
+					fmt.Sprintf("Routing domain %q was created, but reading it back from Citrix Secure Private Access returned \"not found\". "+
+						"This is usually a temporary delay in the service. The configured values have been recorded in the Terraform state, "+
+						"and any computed values are refreshed by the next terraform plan.",
+						data.FQDN.ValueString()),
+				)
+				return
+			}
+			// The backend deletes routing domains whose FQDN matches a deleted
+			// application's URLs, so explain the likely drift before dropping state.
+			diags.AddWarning(
+				"Routing Domain Deleted Outside Terraform",
+				fmt.Sprintf("Routing domain %q no longer exists in Citrix Secure Private Access. The most common cause is the deletion of an application: "+
+					"Citrix Secure Private Access also deletes the routing domains whose FQDN matches that application's url, related_urls or destination "+
+					"values, unless another application still references the same FQDN.\n\n"+
+					"If this routing domain is no longer required, remove its resource block from the configuration. If it is still required, the next "+
+					"terraform apply recreates it. See Note 3 in the citrixspa_routing_domain documentation for the full rule.",
+					data.FQDN.ValueString()),
+			)
+			dst.RemoveResource(ctx)
 			return
 		}
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read routing domain, got error: %s", err))
+		diags.AddError("Client Error", fmt.Sprintf("Unable to read routing domain, got error: %s", err))
 		return
 	}
 
@@ -221,9 +247,9 @@ func (r *RoutingDomainResource) Read(ctx context.Context, req resource.ReadReque
 
 		if len(locIds) > 0 {
 			// Convert slice of strings to Terraform list type
-			locationIds, diags := types.ListValueFrom(ctx, types.StringType, locIds)
-			resp.Diagnostics.Append(diags...)
-			if resp.Diagnostics.HasError() {
+			locationIds, listDiags := types.ListValueFrom(ctx, types.StringType, locIds)
+			diags.Append(listDiags...)
+			if diags.HasError() {
 				return
 			}
 			data.LocationIds = locationIds
@@ -231,7 +257,7 @@ func (r *RoutingDomainResource) Read(ctx context.Context, req resource.ReadReque
 	}
 
 	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	diags.Append(dst.Set(ctx, &data)...)
 }
 
 func (r *RoutingDomainResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -323,7 +349,7 @@ func (r *RoutingDomainResource) Delete(ctx context.Context, req resource.DeleteR
 	currentRD, err := r.client.GetRoutingDomain(ctx, fqdn)
 	if err != nil {
 		// If 404, resource is already gone
-		if strings.Contains(err.Error(), "404") {
+		if IsNotFound(err) {
 			tflog.Debug(ctx, "spa-terraform-provider: RoutingDomainResource.Delete - Resource already deleted")
 			return
 		}

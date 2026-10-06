@@ -1,0 +1,56 @@
+# CloudCheckr — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_cloudcheckr_app_cloudcheckr_com" {
+  fqdn         = "app.cloudcheckr.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "CloudCheckr"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_cloudcheckr_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "CloudCheckr"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_cloudcheckr" {
+  name         = "CloudCheckr"
+  type         = "saas"
+  state        = "complete"
+  description  = "Cost management, security, reporting and analytics tool to help users optimize their AWS and Azure deployments."
+  url          = "https://app.cloudcheckr.com"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAAEnQAABJ0Ad5mH3gAABYWSURBVHhe7ZwJYFTVucf/M5OZyZ6QfU9IIMEI+kIQEEUEl2KlQJGnRVBEoCqkWhVEFArKIi4FfQgtskixQiEoICAalCVR9gSEkJCE7Pu+zp6Z6Xfu3DQZkpBt0D7v/YVJMt+5c+fOOf/zLefcIDETEBEsUv6niEARBSBwRAEIHFEAAkcUgMARBSBwRAEIHFEAAkcUgMARBSBwRAEIHFEAAkcUgMARBSBwRAEIHFEAAkcUgMARBSBwRAEIHFEAAkcUgMARBSBwRAEIHFEAAkcUgMARBSBwRAEIHFEAAkcUgMARBSBwRAEIHFEAAkcUgMARBSBwRAEIHFEAAkcUgMARBSBwRAEIHFEAAkcUgMARBSBwRAEIHFEAAudnF4DBYOJ/E/lv4Jb+b+E5FTocudqEE9eakFKuh0QigYTsTAL0xoj1U2BstDMej3GFh4uce80vAl1LUY0BJrowd0cpXJ3s+IY2UGPo8mw40ZTZMzsIg4Md+IZfhsp6AwaszEasvwJfx4XBXtG7uXxLBFBcq8eSgxVIKdBCZzTDWSGBQsaG3gL7jb2pntoadWbYyyWYNMQZb/zGG/ZKGXfMz8H1ci3Wfl+Ny2V6NOtNMFJXKORSONM1LH7IE/cPcuaPJEgAA1fmwFFixq5ZQYgO+mUFUNVgQBQJ4K5AJQ7MC4WSrrs32DwE/HBdhbHr8nCxUAsnGnhPRxmUdlLL7Ocf9I37yexeTjI4kgDiLzbi/o/yUFCl5890a1lxuAIPbyjA8Sw1qqkzy7RmVNKjqsmIEhLw9B3FeHp7EZo0RssL6HqldOlSdv3/BbCrkNLosWvqCzYVQGJmE6Z8UggvZxkNvmXQuwPrVA8SCnPBY9blcgNyK1myrwxbTtdBRn7orlAH7HwmEHnLByDvrYH4Li4EvxviwqICDqU2YvuZOv5Vv05sJoD8Kh3m7ixFhJe82wN/I3IKEz4udhi3Pp+Ly7eCQz814NML9VDSJ1/+W1/seCYIMWFOfCsQ7KXE6t/7YduMAPztCX/EjfXkW36d2EwAC/eVc668ry7SjkTQTLnB4v3lvMWGmMxYn1gDT3spHrrdBdNHuvMN7RlP7U/c1Xl7R9Srmil8GFDb1MxbbIeOcpTSOgMa1JZzs36yBTYRwNlcFa6W6OBAArAFbjRAX/zUiLxq2+YDV8p0yKnUo4Ti/F8n+fDWvlPZ0IzpnxZhwsZ8PEh5zIQN+ZhGz1mi1pZzuWqM/zgf4zcX8hZrBr+fgye2FFIItBbQxhPV+A15xUfW52E8/Zy/u5TLTez6mgAQNhHA5xRPmSJ76/pvhEsQ6XxbEqt5i23ILNVSCSrBIA857O1tU22k5KkRsyYbF+hnhcqEKG85KlVG7vmda3JxhpLiFjQ6E/Iq9Cgo1/EWa3JoEuVS6cyqkRbm7yrBB1SpFJOYyIGBJfvxKQ2YuKkQIW52XDXVF2wigC/SVFypZ0vY+Y5kaeg32+UC5fXN3Nmi/ZQWQx/RkluevasULpRQTLnTFRnLB2Lf/DBkvh2JGRQ+HOkzPB9fyoUGBhM2y3M6c99yO0t7yzw6m61CwrUmONL5Xxrjict/GYiTCyOQ9OdQ6EjItkiT+iyAjGINXGzk+tvCOsFkMOEKlZO2QsGVo0BFo21i9D5KKBvIFftR1fPOFD/eamHZBB8M6CdHndqIr640cjY5OZ2Wwe0Oh2lisZzqTn8F4sa1JqNR/vZ4ebQ7GrR9X1XtswBSyG2xRSgzV5naDjZb1AYzMqq7VxLuL9mLFdeW8M86JtRHQaWmGWeLO3bBPeVKgQZsZXvqUFfeYs2UWFdull6k2M/oaQ8VVuqgaTZjaowbb2nld3e4olZr7HOv90oAGnrj1AI1skq0OJWttnJbtoStEJ5rE0M748fqRCxMjcMXxf/CsvTFvLU9MQFK+DrJ4Equef/Fet7ae1Q6iw92dug4n3BxohhNhzRS7Gcwz3+zfrrRpRuoGqJ/cKKk+EaYjbX1lW4LQE9S3366BiPeuY6IFdl4bBtlvZ8U4FSOhhuoWwHLA77LVMH79QxMogz7bI5lJrXlWEUCZiRPQahjOLyUPjhQEo8lV1/jW63xcpVj3G3OkFD2vOhAOYpuUmWoyb2mk8BvxqBAJbcSdzy9ibdYczaDXD+NeHSgZdlYRgdT5O4wq1HTpGJVVNs2L0ryHEg1Z7LaT4J0Cr3ONuj3bglg/bEqjPwgF+8mVMNMH6i/ux28SN3sYc/t4fT8Qpjau96GkHCdEuUpRyHVwE/vKELc7hKo+Nj3ddkB/Dn1OUQ4RHLPGUwEB8u+xAeZq3mLNSsoNvdzkFKVQYkblVwJae0H72qxFvety8HkTQU4cKmBt7bngSgnbu3jdL4GSRnW50mjATpAMdyR+mf8YMueQhDlBEbmAmjqJlJy15bV31bCj7xT2x65N8KJsn4zvqTzFN4g1lXf18CDPE9XPdgVN90MMjSbqLYtQC7FYU9HKaQ2qDtbYIs9eqOJ2w9gM6M7MJdYTjV81uJIHFPtx2upr8Jb7sPlCzdSqSvHnND5+NOAV3hLKzVUpt2/Npvit4QruSJ9lIjwUtBsNiO/3ohrJADSB3SUK66Z7IMpLAbTcbetyoYDvdXnzwTiNn5WLz9Yju3n6uGmlGDCYFeMDLXH+QItvkxtRBMJdfZIdyx9tHXNYQqJKovKQCnVc8sf9ESwpx12nGvAoauN8HexhIwDL4TAm7wV4+73ctBEIcSJRPscncvHUYatF+qRRt6pHwmAiXnfC73fDOpUAHXqZty9Ng807jTLe3fyzlBR+eRJ3uPDKQF4bGset2HUlbj0lAxpKCm88voAJDUdxuyU2QhRhnceU+lTVRoqMDNoLl6JXMQb20DJ4KJ9Zdzg2VP5paQHi9FMZFVaM34z0BF/fcwPQZ4K/ngTJAsy4EbX+f38YMT2b10+Xne0Esu+qeLKwZbLqafBXz7eC68+7M1bLNQ0NeP+D/NQQ9UD69UGyiNYdZAwLxRD381GoLsc5xf0h7+H5X3Lqf5ni0BsbUFGH5b1nYyOPzQ3GCPIK9/ur8S518Lh2Mt1jQ4FwOJ9zJocOFKnKOhhS5p0Rvi7KvDNi6FoMBdCrg5G9OoMbg+gs/pYR4PPqozkReFIqNmLuclzEekUTbZOnZcFas5UX8PGIdsxIWAib2zPKXLfF4q0UJPHiyJP8BDlCc6O1vcEsOqhjgbPRN3F7hdgJaU1ZhxIrkdBfTP6k6uf0EHm3pak9EacoRI3nI59jF9yLq+h6p4G2dNN3s4rpuSokJSrQSiF38mxluPL6HgZuSqWK7Dsojd0KIBZ/yhEcqGOU7QtYdmwv4sc374Uig+zV+PvuRsQPyIe/VSj8NvNWZynYRVFW9jgs3l1bmE4DtbsxKIrixCgDKGWrge/2lCFyX7/i2XRq3ijyI20G+HkXBVO5WptvLLHbvwwIYLcGhv8D7Lewrb8LfBTBOIP56bB2Tsf26YPgEZPZQ9b7+TR0Yw0GsG5uP1Vn+GN1Dfgrwimli4Gn6gi9/94wJPi4HdBOwFsSKzlMtuOEqveUqsxY4CHEvvmhWBd1gpsyf8EPgp/2Ent4Es/7zlxD4aEV2LnzAEoZcu15JS0FO+Zb7q4JALfkttflLoIvvKAzmP+f5CgRFuIJwJmYPGg5bzNBtC1vJb+HN689iIa9JaVvV+CJkMjduZ/hk05G6BpZkvlfaNdCHB7NR1D/JTdmGPdo0ZtxN3BTtj2bADeTl+MfxX/E4H2IXT+1ncwmU2oMJQgaUwiaivDMPyDdET6KnFqIbn9sl2I+2let2N+maEYMwP/iIVRb/LGm/NV6V6cqTmN9Lo0mOgryJFyErdozAmZT4lh656BrlmHmBMD4GrXDwdGHIWvgy/f8vNSoirBxHMPkIcrx8XR2VQF9ONbeoeVAK4WqPHo5kIE8iVIX2Bn1VIyOTTIAVtmBuKNq3/GkYpD8JSzjms/kAaTAVpTE46OOYoLaYG4P1KC+IqteOvaMgQqQ7s1+JXUKU8FzsGCqM5XA1s4VZWE19JepMRPBY1JQ+Ug2yiijFyqgFJiT78ZsSBiCWaEzrK8wATEJkbCReqG+OFfw9veOrv/uShTl2Fa8iQuxCWNugR3+5snm11hFQIul+jg1C677R0sW3a2l3CD/3HOKuwt3dXp4DPkUjmUUieMPTkO4243Y2fZZqzMWIEAhbW36IwKQxmeCXq+W4N/tOwbzLk0HXqjDm4Kd7za/w3sHnEQX4w4gqUDV9Lg+kAhccDSjIXYlP0x/6pfJ1ajnV/X3C4L7y1sIaWOYv9bByoQF/4mRrmPQZ3h5vv7Cpp9rtJ+GJs4Eh9lr+NiftfVjQSF2jzMosF/OXIhb+ucck0pXkydDQeZA+72uA/H7z2HOREvIMZ1GO5wjcG0kKeRMOoHDHMfjoc9J+C5iDj+lb9OrKe7LRN/OhkrI7eer8PKr2qwfdgexLrfhdouRCCTyijRk8LNjmrdrq6HHEOxrgALSGAvR3a8/n8jL6fOo3N7YJDTYHx05995a3s2xmzDptjt/LNfL1YCCHe34+7VtyXBbjJsT67G+9/WYlPMZ7iTZllD88134qQkgC6hy2QJ30v9X8Pc8Pm88eZcb8pEVtM1Ln5uvHMrb+0ZrDrykHtym1BPn38cDySNwiuX4pDRmMYfYY26WY0d+Vvx5LkpGJc0EnEX/4hDpfv41vacrTmFZVcXY8KpBzDt7BRsy9uEen3XdyZ/WbQbazPX4OuSg7wFSK2/jC25G5FQ/jVVLnWYlzILn+Vbi9qqp/8nyB6N+r7fZGCNBL5OUmw6VYl1CXXYFvsvhNr3h8rY8Q5a95CgTF+MuLBX8Hz4n3hb16Q1pkJtUiFEEQ43Zc9u+LQgodDhiBUZSzH74pPI0WZCTZ/jeE0CJp55ABdrk/njLBSpC8k+DiszlyJbnUl5pBFJtcewIDUOf0x5ij+qleXpr9N5pyO+9HNU6SuQ3nQF719fid+evh+X637ij2qh9Q6MXQU7qER9EZsLPsbdXvfyVuB83Vm8k/UWNuR8iGdTZmBP2efQGa13OK0EEBnowK252xyaNWwf/v9+oJl3rB7xIw9R/e+Lpuae19NsyTNPk4WFlKE/H/4Sb+0eOQ3Z9IFlGNpvGG/pGezuHI1Rgx3Fm7Hxju1cFs4qgoHOkfCiBHdVpvUNKY9feASV+kqM9hyLr0Z8j+9HncX6IZvho/RFYs1x7Cz8B38kuHsZdhb9A/ZSe8wJnYd/xn6BT2N34XaXO7jy1N/B+o4jhoudK85TCbsi6w1KWpVIvDcZ/RStZSHLqXwUfpR71SBTlYb3b1+PR/wm8K0W2vnaaUNd0WRzL0BQ5wW62OHthDJsTWzA/ruPIsQ+tMtwYAVpM09zHW9HvouZYXN5Y/dpWdxiIugtjYYGrIp6H4/4T4CEThPkGISdw/aj1FBC4SULZdpS7rhj5d/RsSqEOfbH1qGfc+sGbN3+Pu+xWDf4E5KxFIdL93PHGk0mbKCkl1VCSyNX4pWBr2OASyRi3Idh74jDOD3mMrxJNG2xlzogR5WNmSlPcGsTe+86TNVL+7UJs9kEnUmHL4YfwazQ5xBI19uWdgJ4cawnt+N0w/qQTWBnHOAp50Sw+WQD9pAnCHMI75YnYJdTri/BXyJX4cmW2ryHhDqF0ncTfqw+aTH0EFbaOtg5YrTXA7zFAlvRDFOGU3hpQpPRIujE2qNwkDrCW+6HfcXx+LxgO/dg7jqt8ScqeRXIaMqgwTdyVUyeLgc+cn9MCnyMe31XuMhcMfPSVHgpvKkPIxDtNoRvsabZ3Ixw5wgMdIniLda0E0C4jxJ/iHFDrYZ5gVsjgiBXGd49VobPTjdhD9Xf7pTxM9faKdzgF+P1gcvxVOgc3thzot0Gc/V9lbEcxRSfew7bmJLBjr5uhIUmy46cxcuoKPmTSeyQSx7rnet/wYe573KPtbnvYEPeWvja+5FHoolGX9XaKsglCgQorWfnzbG8j4K8RkZTGtZkvMU9vxF2fibEzmgnAMbKyb4Y5KNAg9b2AuDgc4KlR0qw+7wK39ybRMmVPTTUae2hmK+9juVRazA95Bne1jsinW9DtGs0POy88fKVeby1p7Au7bpf3BRuXKL7qM8UnBuTjvOjWx9n7ruKb0f9gLNj0jjvwRaj9GYdSnUl/Ku7RmvS4kHv8dgWs5uEJsX2wk9wtf4K32rNza63QwEw2F0mUSSCSvZnTrcgHDARBLnIELe3EAcvafDdvafhKnelmdPm/jd62xx1Bj6imDk1aBpv7Bvv3f4xt03MsvK5yTN4a3tmnJ+KR34ca309PeAhj9/BAD2OVPIlH+vplgdN3pMVxyBlf95LhDlGIFw5AOVU1h4qOcDZ2pJen87/1orK2IilA1chhMLagog3ITXLuHsje0qnAmDsfS4E04a5oazRCI3B9nkBK2TYDRjPxxfgyxQtjtyTSFmsO7QUDthblegL8eHgTXjUfzL/ir7j7xCAz4bGcwN7ufESYo9H4oOM1fiu8giOVx7FhuvrMPxENLJVmchSp1HdvI1/JRu3VhffFSO8RiDMPgyVukqq5yfjOiWIhmYDVxquTF+KGSlTMCt5KnesnVTGVTRaKlGXZ7yO9dl/xfXGLK6Ofzb5STxy5h5symm7JC3hKoMmvpT+Q8hTGOf9IIyU8P3pknVybLnmzun0lrC2XCvVYtWRSlwq1sFgMlMNze7j4xttALtE9vd6H/0+BBNj7DHq5B2ooVn6HpUtE/27lxT1lOSa81ic/hLKtRXcTGXehnWWWWKGHAq4kxCXRa7GON+HueOpbxFxzAOuUk8cHnECgU6BnL2F2O8HIV+XjR9GX8Qgl8GcjS3gTL8wCdfV2Vx556nwQoOhHnXNtZy32zl0P6IoJLXw5tWXcbD8KzSb9HCjzF5tVMNg1qOfvB+VcB9jlNdolKhLMOHMWPIWRUi9r+g/u4EmqiTuOjmIq0JW3PYung2bh0/z2X7KEm4Fds/wQ9xxN9ItAbTAbpNOSG/EnpRGlLJ71GwoAjYAReRptj4RikeH1uFE+Y+YFGCZIbcMes8T1d/hh8okXGtI44QY5hSOYR7DMdHvMbRdkGTd9LfctXCWuWOS/1Quxrdle95mNBrrMCP4WfJibf6knN5jd9E/kVR5EgXafPgrAzC0XyymB8+Cs7zN/0DCwyqUr4r34wpVCk4yJ4zxGocng5+Gh9JyzgY9ldCl8dCYGvFM8AtWW9YX684huTaZQosJz4bOx+W6S0io+BohDiF4PLjjcNcjAVhByqQahs7QPZfYLehKGjXNcHFpveFS5NbSewGI/CqwpRMX+X+IKACBIwpA4IgCEDiiAASOKACBIwpA4IgCEDiiAASOKACBIwpA4IgCEDiiAASOKACBIwpA4IgCEDiiAASOKACBIwpA4IgCEDiiAASOKACBIwpA4IgCEDiiAASOKACBIwpA4IgCEDiiAASOKACBIwpA4IgCEDiiAASOKACBIwpA4IgCEDiiAASOKACBIwpA4IgCEDiiAASOKACBIwpA4IgCEDTAvwFvDFT2BJblIwAAAABJRU5ErkJggg=="
+
+  using_template   = true
+  template_name    = "CloudCheckr"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://app.cloudcheckr.com/sso/Acs"
+    audience          = "https://app.cloudcheckr.com"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "IDP"
+    sp_initiated_only = false
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_cloudcheckr_app_cloudcheckr_com,
+    citrixspa_routing_domain.rd_cloudcheckr_customer_fqdn,
+  ]
+}

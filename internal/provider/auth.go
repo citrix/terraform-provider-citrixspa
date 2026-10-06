@@ -82,6 +82,9 @@ func (a *AuthClient) GetBearerToken(ctx context.Context, clientID, clientSecret 
 	data.Set("client_secret", clientSecret)
 	encoded := data.Encode()
 
+	// SECURITY: Do NOT log the form body (encoded) as it contains client_secret. If logging is
+	// added here in the future, the client_secret value MUST be redacted before logging.
+
 	// The token endpoint is rate-limited independently of the data-plane API and
 	// occasionally returns transient 429/5xx responses under load (e.g. parallel
 	// acceptance tests). Retry those with backoff (honoring Retry-After on 429),
@@ -211,7 +214,7 @@ func NewAuthenticatedClient(authBaseURL, customerID, clientID, clientSecret stri
 
 	var tokenPersistence *TokenPersistence
 	if enableTokenCache {
-		tokenPersistence = NewTokenPersistence(customerID, clientID)
+		tokenPersistence = NewTokenPersistence(customerID, clientID, clientSecret)
 	}
 
 	p := &AuthenticatedClient{
@@ -258,9 +261,17 @@ func (ac *AuthenticatedClient) EnsureValidToken(ctx context.Context) error {
 
 	// If token cache is enabled, try to load from disk
 	if ac.EnableTokenCache && ac.TokenPersistence != nil {
-		if cachedToken, err := ac.TokenPersistence.LoadToken(ac.AuthClient.CustomerID, ac.ClientID); err == nil && cachedToken != nil {
+		cachedToken, err := ac.TokenPersistence.LoadToken(ac.AuthClient.CustomerID, ac.ClientID)
+		switch {
+		case err != nil:
+			// Expected and self-healing after an upgrade (legacy key) or a client-
+			// secret rotation: LoadToken purges the unreadable file and we fall
+			// through to a fresh OAuth fetch below.
+			tflog.Debug(ctx, "spa-terraform-provider: discarding unreadable token cache, re-authenticating", map[string]interface{}{
+				"error": err.Error(),
+			})
+		case cachedToken != nil:
 			tflog.Info(ctx, "spa-terraform-provider: Loaded valid token from disk cache")
-			// Update in-memory cache
 			ac.TokenCache = &TokenCache{
 				Token:     cachedToken.Token,
 				ExpiresAt: cachedToken.ExpiresAt,

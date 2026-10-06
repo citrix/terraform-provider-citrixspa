@@ -22,14 +22,14 @@ type AccessPolicyDataSource struct {
 }
 
 type AccessPolicyDataSourceModel struct {
-	ID           types.String                `tfsdk:"id"`
-	Name         types.String                `tfsdk:"name"`
-	Description  types.String                `tfsdk:"description"`
-	Active       types.Bool                  `tfsdk:"active"`
-	Priority     types.Int64                 `tfsdk:"priority"`
-	Modified     types.String                `tfsdk:"modified"`
-	Apps         types.Set                   `tfsdk:"apps"`
-	AccessRules  []AccessRuleDataSourceModel `tfsdk:"access_rules"`
+	ID          types.String                `tfsdk:"id"`
+	Name        types.String                `tfsdk:"name"`
+	Description types.String                `tfsdk:"description"`
+	Active      types.Bool                  `tfsdk:"active"`
+	Priority    types.Int64                 `tfsdk:"priority"`
+	Modified    types.String                `tfsdk:"modified"`
+	Apps        types.Set                   `tfsdk:"apps"`
+	AccessRules []AccessRuleDataSourceModel `tfsdk:"access_rules"`
 }
 
 type AccessRuleDataSourceModel struct {
@@ -58,7 +58,6 @@ type DomainOverrideDataSourceModel struct {
 
 type ConditionDataSourceModel struct {
 	PlatformFilter types.String `tfsdk:"platform_filter"`
-	UserAndGroups  types.Map    `tfsdk:"user_and_groups"`
 }
 
 type RestrictionsDataSourceModel struct {
@@ -185,11 +184,6 @@ func (d *AccessPolicyDataSource) Schema(ctx context.Context, req datasource.Sche
 										MarkdownDescription: "Platform filter",
 										Computed:            true,
 									},
-									"user_and_groups": schema.MapAttribute{
-										MarkdownDescription: "User and groups",
-										Computed:            true,
-										ElementType:         types.StringType,
-									},
 								},
 							},
 						},
@@ -312,7 +306,11 @@ func (d *AccessPolicyDataSource) Read(ctx context.Context, req datasource.ReadRe
 	data.ID = types.StringValue(policy.ID)
 	data.Name = types.StringValue(policy.Name)
 	data.Active = types.BoolValue(policy.Active)
-	data.Priority = types.Int64Value(int64(policy.Priority))
+	if policy.Priority != nil {
+		data.Priority = types.Int64Value(int64(*policy.Priority))
+	} else {
+		data.Priority = types.Int64Value(0)
+	}
 	data.Description = types.StringValue(policy.Description)
 	if policy.Modified != "" {
 		data.Modified = types.StringValue(policy.Modified)
@@ -373,18 +371,8 @@ func (d *AccessPolicyDataSource) Read(ctx context.Context, req datasource.ReadRe
 		// Convert Conditions
 		conditions := make([]ConditionDataSourceModel, 0)
 		for _, condition := range rule.Conditions {
-			userAndGroupsMap := make(map[string]attr.Value)
-			if condition.UserAndGroups != nil {
-				for k, v := range condition.UserAndGroups {
-					userAndGroupsMap[k] = types.StringValue(fmt.Sprintf("%v", v))
-				}
-			}
-			userAndGroups, diags := types.MapValue(types.StringType, userAndGroupsMap)
-			resp.Diagnostics.Append(diags...)
-
 			conditions = append(conditions, ConditionDataSourceModel{
 				PlatformFilter: types.StringValue(condition.PlatformFilter),
-				UserAndGroups:  userAndGroups,
 			})
 		}
 		accessRule.Conditions = conditions

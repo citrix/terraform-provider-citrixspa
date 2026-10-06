@@ -1,0 +1,56 @@
+# feedly — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_feedly_feedly_com" {
+  fqdn         = "feedly.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "feedly"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_feedly_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "feedly"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_feedly" {
+  name         = "feedly"
+  type         = "saas"
+  state        = "complete"
+  description  = "News aggregation tool to compile news feeds from different sources."
+  url          = "https://feedly.com/i/my"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "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"
+
+  using_template   = true
+  template_name    = "feedly"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://cloud.feedly.com/v3/auth/samlCallback"
+    audience          = "cloud.feedly.com"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "SP_IDP"
+    sp_initiated_only = false
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_feedly_feedly_com,
+    citrixspa_routing_domain.rd_feedly_customer_fqdn,
+  ]
+}

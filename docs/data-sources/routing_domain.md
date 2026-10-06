@@ -26,7 +26,7 @@ data "citrixspa_routing_domain" "example" {
 
 ### Read-Only
 
-- `type` (String) Type of routing entry. Valid values: `internal`, `external`, `external_via_connector`, `internal_bypass_proxy`.
+- `type` (String) Type of routing entry. Valid values: `internal`, `external`, `conflicting`, `internal_bypass_proxy`, `internal_via_gateway`, `external_fixed_ip`.
 - `app_type` (String) Type of application bound to this routing entry (`ztna`, `web`, `saas`).
 - `comment` (String) Admin description for the routing entry.
 - `flag` (String) Whether the routing entry is `enabled` or `disabled`.

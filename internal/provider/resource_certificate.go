@@ -175,8 +175,8 @@ func (r *CertificateResource) Read(ctx context.Context, req resource.ReadRequest
 	// Update the model with the API response
 	data.CertificateID = types.StringValue(cert.CertificateID)
 	data.CertificateName = types.StringValue(cert.CertificateName)
-	// Note: We don't update the certificate data from the API response as it's sensitive
-	// and may not be returned in the response
+	// Note: We don't update the certificate data from the API response: it's sensitive
+	// and the API does not return it in the response.
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

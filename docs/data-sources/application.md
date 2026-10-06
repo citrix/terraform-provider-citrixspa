@@ -41,8 +41,8 @@ data "citrixspa_application" "by_name" {
 - `agentless_access` (Boolean) Whether agentless access is enabled.
 - `mobile_security` (Boolean) Whether mobile security is enabled.
 - `sbs_only_launch` (Boolean) Whether SBS-only launch is enabled.
-- `using_template` (Boolean) Whether the application uses a template.
-- `template_name` (String) Template name.
+- `using_template` (Boolean) Whether the application was provisioned from a built-in SPA catalog template (backend); unrelated to the provider's `templates/` directory.
+- `template_name` (String) Name of the built-in catalog template (backend) from which the application was provisioned.
 - `icon` (String) Base64-encoded icon data.
 - `icon_url` (String) Application icon URL.
 - `related_urls` (Set of String) Related URLs.

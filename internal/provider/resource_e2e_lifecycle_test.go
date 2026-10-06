@@ -30,6 +30,7 @@ import (
 func testAccE2ELifecycleConfig(prefix string) string {
 	appFQDN := prefix + ".example.com"
 	relatedFQDN := "api." + prefix + ".example.com"
+	ztnaFQDN := "ztna." + prefix + ".internal.example.com"
 
 	// A "complete" web application requires routing domains for both the app
 	// URL and the related URL.
@@ -41,6 +42,12 @@ func testAccE2ELifecycleConfig(prefix string) string {
 		"e2e_rd_api", relatedFQDN, "internal", "web",
 		"E2E lifecycle test - related routing domain", "enabled", "false", "[]",
 	)
+	// A "complete" ZTNA application requires a routing domain for its
+	// destination host.
+	rdZtna := testAccRoutingDomainConfig(
+		"e2e_rd_ztna", ztnaFQDN, "internal", "ztna",
+		"E2E lifecycle test - ztna routing domain", "enabled", "false", "[]",
+	)
 
 	app := testAccApplicationConfig(testAppConfig{
 		resourceName: "e2e_app",
@@ -51,6 +58,23 @@ func testAccE2ELifecycleConfig(prefix string) string {
 		relatedURLs:  []string{relatedFQDN},
 		state:        "complete",
 		dependsOn:    []string{"citrixspa_routing_domain.e2e_rd", "citrixspa_routing_domain.e2e_rd_api"},
+	})
+
+	ztnaApp := testAccApplicationConfig(testAppConfig{
+		resourceName: "e2e_ztna",
+		name:         prefix + "-ztna",
+		appType:      "ztna",
+		description:  "E2E lifecycle test - ztna application",
+		state:        "complete",
+		destinations: []testDestination{
+			{
+				destination: ztnaFQDN,
+				port:        "443",
+				protocol:    "PROTOCOL_TCP",
+				subtype:     "SUBTYPE_HOSTNAME",
+			},
+		},
+		dependsOn: []string{"citrixspa_routing_domain.e2e_rd_ztna"},
 	})
 
 	policy := testAccAccessPolicyConfig(testAccessPolicyConfig{
@@ -73,7 +97,7 @@ func testAccE2ELifecycleConfig(prefix string) string {
 		unpublishedOut: "disabled",
 	})
 
-	return rd + rdRelated + app + policy + sg
+	return rd + rdRelated + rdZtna + app + ztnaApp + policy + sg
 }
 
 // testAccCheckE2ELifecycleDestroy verifies that every resource created by the
@@ -91,26 +115,26 @@ func testAccCheckE2ELifecycleDestroy(s *terraform.State) error {
 		case "citrixspa_application":
 			if _, err := client.GetApplication(ctx, id); err == nil {
 				return fmt.Errorf("application %s still exists in the API after destroy", id)
-			} else if !strings.Contains(err.Error(), "404") {
+			} else if !IsNotFound(err) {
 				return fmt.Errorf("unexpected error checking application %s: %s", id, err)
 			}
 		case "citrixspa_access_policy":
 			if _, err := client.GetAccessPolicy(ctx, id); err == nil {
 				return fmt.Errorf("access policy %s still exists in the API after destroy", id)
-			} else if !strings.Contains(err.Error(), "404") {
+			} else if !IsNotFound(err) {
 				return fmt.Errorf("unexpected error checking access policy %s: %s", id, err)
 			}
 		case "citrixspa_security_group":
 			if _, err := client.GetSecurityGroup(ctx, id); err == nil {
 				return fmt.Errorf("security group %s still exists in the API after destroy", id)
-			} else if !strings.Contains(err.Error(), "404") {
+			} else if !IsNotFound(err) {
 				return fmt.Errorf("unexpected error checking security group %s: %s", id, err)
 			}
 		case "citrixspa_routing_domain":
 			fqdn := rs.Primary.Attributes["fqdn"]
 			if _, err := client.GetRoutingDomain(ctx, fqdn); err == nil {
 				return fmt.Errorf("routing domain %s still exists in the API after destroy", fqdn)
-			} else if !strings.Contains(err.Error(), "404") {
+			} else if !IsNotFound(err) {
 				return fmt.Errorf("unexpected error checking routing domain %s: %s", fqdn, err)
 			}
 		}
@@ -125,6 +149,7 @@ func TestAccE2ELifecycle(t *testing.T) {
 	prefix := fmt.Sprintf("tf-acc-e2e-%s", strings.ToLower(acctest.RandString(6)))
 	appFQDN := prefix + ".example.com"
 	relatedFQDN := "api." + prefix + ".example.com"
+	ztnaFQDN := "ztna." + prefix + ".internal.example.com"
 	config := testAccE2ELifecycleConfig(prefix)
 
 	resource.Test(t, resource.TestCase{
@@ -133,8 +158,10 @@ func TestAccE2ELifecycle(t *testing.T) {
 			// Best-effort cleanup of leftovers from a previous failed run.
 			testAccCleanupSecurityGroupByName(prefix + "-sg")
 			testAccCleanupApplicationByName(prefix + "-app")
+			testAccCleanupApplicationByName(prefix + "-ztna")
 			testAccCleanupRoutingDomain(appFQDN)
 			testAccCleanupRoutingDomain(relatedFQDN)
+			testAccCleanupRoutingDomain(ztnaFQDN)
 		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckE2ELifecycleDestroy,
@@ -145,12 +172,18 @@ func TestAccE2ELifecycle(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.e2e_rd"),
 					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.e2e_rd_api"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.e2e_rd_ztna"),
 					testAccCheckApplicationExistsInAPI("citrixspa_application.e2e_app"),
+					testAccCheckApplicationExistsInAPI("citrixspa_application.e2e_ztna"),
 					testAccCheckAccessPolicyExistsInAPI("citrixspa_access_policy.e2e_policy"),
 					testAccCheckSecurityGroupExistsInAPI("citrixspa_security_group.e2e_sg"),
 					resource.TestCheckResourceAttr("citrixspa_application.e2e_app", "name", prefix+"-app"),
 					resource.TestCheckResourceAttr("citrixspa_application.e2e_app", "type", "web"),
 					resource.TestCheckResourceAttrSet("citrixspa_application.e2e_app", "id"),
+					resource.TestCheckResourceAttr("citrixspa_application.e2e_ztna", "type", "ztna"),
+					resource.TestCheckResourceAttr("citrixspa_application.e2e_ztna", "destination.#", "1"),
+					resource.TestCheckResourceAttr("citrixspa_application.e2e_ztna", "destination.0.protocol", "PROTOCOL_TCP"),
+					resource.TestCheckResourceAttrSet("citrixspa_application.e2e_ztna", "id"),
 					resource.TestCheckResourceAttrSet("citrixspa_access_policy.e2e_policy", "id"),
 					resource.TestCheckResourceAttrSet("citrixspa_security_group.e2e_sg", "id"),
 					resource.TestCheckResourceAttr("citrixspa_security_group.e2e_sg", "app_ids.#", "1"),

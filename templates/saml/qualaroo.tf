@@ -1,0 +1,56 @@
+# Qualaroo — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_qualaroo_app_qualaroo_com" {
+  fqdn         = "app.qualaroo.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "Qualaroo"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_qualaroo_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "Qualaroo"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_qualaroo" {
+  name         = "Qualaroo"
+  type         = "saas"
+  state        = "complete"
+  description  = "Feedback tool to gain insights from customers."
+  url          = "https://app.qualaroo.com/dashboard"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "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"
+
+  using_template   = true
+  template_name    = "Qualaroo"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://app.qualaroo.com/saml/callback"
+    audience          = "https://app.qualaroo.com/saml/callback"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "IDP"
+    sp_initiated_only = false
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_qualaroo_app_qualaroo_com,
+    citrixspa_routing_domain.rd_qualaroo_customer_fqdn,
+  ]
+}

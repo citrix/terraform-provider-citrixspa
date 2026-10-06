@@ -307,15 +307,33 @@ info "Discovering Customer A into a Terraform state..."
 discover_tenant_to_state "${CITRIX_CUSTOMER_ID}" "${CITRIX_CLIENT_ID}" "${CITRIX_CLIENT_SECRET}" "${A_STATE}" \
   || { error "failed to discover Customer A into state"; exit 1; }
 
-info "Discovering Customer B into a Terraform state..."
-discover_tenant_to_state "${CITRIX_CUSTOMER_ID_B}" "${CITRIX_CLIENT_ID_B}" "${CITRIX_CLIENT_SECRET_B}" "${B_STATE}" \
-  || { error "failed to discover Customer B into state"; exit 1; }
+# Customer B's discovery LIST can lag right after the migration apply
+# (read-after-write list-indexing eventual consistency), surfacing a just-created
+# resource as "missing". Re-discover B and re-compare with exponential backoff
+# before declaring a mismatch: 1 initial attempt + 2 retries.
+compare_attempts=3
+compare_backoff=15
+compare_attempt=1
+while true; do
+  info "Discovering Customer B into a Terraform state (attempt ${compare_attempt}/${compare_attempts})..."
+  discover_tenant_to_state "${CITRIX_CUSTOMER_ID_B}" "${CITRIX_CLIENT_ID_B}" "${CITRIX_CLIENT_SECRET_B}" "${B_STATE}" \
+    || { error "failed to discover Customer B into state"; exit 1; }
 
-info "Comparing Customer A vs Customer B resources (state-to-state diff)..."
-if ! python3 "${SCRIPT_DIR}/compare-tenants.py" "${A_STATE}" "${B_STATE}"; then
-  error "migrate E2E FAILED: Customer B does not match Customer A (see diff above)."
-  exit 1
-fi
+  info "Comparing Customer A vs Customer B resources (state-to-state diff)..."
+  if python3 "${SCRIPT_DIR}/compare-tenants.py" "${A_STATE}" "${B_STATE}"; then
+    break
+  fi
+
+  if [ "${compare_attempt}" -ge "${compare_attempts}" ]; then
+    error "migrate E2E FAILED: Customer B does not match Customer A after ${compare_attempts} attempts (see diff above)."
+    exit 1
+  fi
+
+  warn "Compare mismatch on attempt ${compare_attempt}; Customer B may still be indexing. Retrying in ${compare_backoff}s..."
+  sleep "${compare_backoff}"
+  compare_attempt=$((compare_attempt + 1))
+  compare_backoff=$((compare_backoff * 2))
+done
 rm -f "${A_STATE}" "${B_STATE}"
 
 info "migrate.ps1 E2E PASSED. Teardown will sweep both tenants next."

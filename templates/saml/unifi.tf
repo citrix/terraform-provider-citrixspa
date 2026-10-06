@@ -1,0 +1,64 @@
+# UNIFI — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_unifi_app_discoverunifi_com" {
+  fqdn         = "app.discoverunifi.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "UNIFI"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_unifi_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "UNIFI"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_unifi" {
+  name         = "UNIFI"
+  type         = "saas"
+  state        = "complete"
+  description  = "Communication and collaboration software with voice, web collaboration, and video conferencing capabilities."
+  url          = "https://app.discoverunifi.com/login"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAZH0lEQVR42u2dh3sTV7bA97/Y7CsfpOymEmoglWyy6cmmbF4K6S+bZAs11JCQEEgIJCEESIGEEoix6eBug42NccPduEqWuy25yJIsW8WyLJ93zp2545E8smVj8mx8L9/9bKSZkTznd0+75975HQD0iz55++/kX0SbpE0AIAAQAAgARBMAiCYAEE0AIJoAQDQBgGgCANEEAFdP6+/vV7pokwgALnSfzwfuvj7WBQyTCIBeFLjL6wUn/nRgdyII9LvV0QO+fp+Q/tUOgMXthf89Uw/JDZ1g6emF1i43RGTVwbs/5wjJTxYAnjxdA3eE6+DNhHp4bHMqTF0UDS9tzxSSnxQAuHrh6cgamBGmY33qkmgGwOs/ZAkfYDIA4EV7X9zmgOeja2DmIR1ctyQGXvg2HfQmO/oAAoBJEwZ2efpgX6kZTuc2ComLPIBokw6AUCHpwzBxsoWHkx4Alijqp0SRlCNwevtkEPoFAFe/4PvBwwTvA4dXThRhp6SRC1/z+nwCgPGtrkf/1d1eH9Tb3YrQA7sD32+2uaCmtUsAMN5GbQ+pannk0igdjXNXZ/fAoycNsKfEDJ0eL6p+Wfj4sxujhvDMerjv0yT44YxeADBehO9GNU2qeiCvL6luet3d6x0RCLWdPSw3MAP76wl1kNzYBV14jTRdO7zxQxZMXRwFUxdFwfeJAoBx0Wjkf5DeDDYarSpVTUI7cKEWNp0uHRUA1KeH6WAO/nx8fxH8aVk0XLs4hnXKGgoAxlGbG6GD+Uf1sPtSOzTaeyCu2Agvbs+AaxdFwprwolEDwDQBpYt35CjCHykA9NlenxRN9E6gKGJCATAvQj8gtL0lTEBcWKMBgIQ+FADXLo5GH0A3rOBp2tnZO2Ca6KcDNZPH6x33yacJ5QPMRQCmh1X6AUB9Ctrq1SMEwIXO3sHyDngYHUES/nQVAHS96avjYVtcJbR1uof9Xgm1nbAqrRnKLS7mkxTUW+G9PTkQkVEvABg7H8AHay40wbxwabRKAETBdThK56O3nlbROqKbzRNAHa5eWH6+Ce46rIcZ23PgpuVx8PKODGgwO/CY0PIA0TWdMkSV8GZ4CQIUySA6mFYrABjLRkmbS+1OeC+pgQEwZ20iHM6sZRU+l9O8vj4oanPABwlVkK5rg15vn5/gevFz+4YINwkAHlHcvDlDMSEH02oEAFfCFJDAztXaUD27hh2l/XIEoXbKWCIJhdpFVULdbnChvfYFZP18slPnUtl1yj8EHkfXcmBksjW/FR44VgU3fpEOd3yYCF9Hl4MTry8AuAIABPagZgOFxVK9aO8p88ezhyTwRoSnxuqEauz0swVB8MpFo3ScmztzasdOTkCRRgj8DgSLqdsDx4pMYLQ5GGATYQZy4mUCZaF6SJi+wTeYZwuV0SsLTuqU5fNCHRc8pXqxV7P/O6De5kTvXZoQUpJNgSniPikZRU6kt8/fLPgm4LTzhAKAbjATqNenjEavhup29QUXYDcK2N4jawDbQNdbnEyNW3u8QecH1N2OIO1ONkz4uYIJAQCp5B459z94RErqvVe20c4ggtcayR0uj2IK9BYHSzQ9E1UDYRUWMKP91gQIzzuR0whPf52Gjl4UGAQAV1blk71ObewCGwpEPWWrFqTN7YGkslYw2V1BR77WeWaHB+KKjFBk7FQA4ImhF2Jq4JLZiSNdAoFMR7nJDs9tvaDKFAoArozgZQeORr0FVfLccD28c7YeskwOaTJI7mSrs2s64LUfsuCPy2LglegaONtgZ68rs3uDpnmlcyMLm9gonrYqDrLqLIMAoLj+zgg9LD/fDCl1VlgeVgjT1yT4ZR8DAZDsvwDgsu18bx93xAiAPkUgNGGzJbcFqlFtV7V1wScnSuDaRdKsHQnk9l/K8LhKWJnWBGVo07njx51AO2qT0qZOePfnXJaoofOCAaCkh/F603YMHO8/VyAB0K84ndJcgG8COYLjBgC8ZXgT+xUPnDt5HAB1f/xEFczFWJty9WqBTD9QxpIxdMz9R6tgY7YJ2t29kr13emBNRBHcjgJXj+KhAOD99p25fueoAahq6WKC5/UJDh52ThAQxgUAdJOK2x3Ms/ZT2RoAkIDvwB4ojEAAeH/ilAG+SauHWWsTNM8ZLQAzVsfDumOXGFjBq4r6mDbzjePSsnEDwGsJ9fBybC3orW45zJM9dbeXqWE+cxcMABqNtx+QTECgGr9ta7bmCFYDUIUA/D2xXllFxHP7wQBYEFEKTV09mo6pGoALunYIz6gTAAzXXo6rY8Kj+f6v88jOu9kN7MK4PayiA56KrFZA4ADw2cAHNp6Dn1IMkNfSzez/TNl2cwCmfXNRU/hqAHgy6EilGTZeNEFOqwN+LG6Hh9Dc3L4jV/ks6g9tSoX7w8rhESopKzVDm6vXz2w5vF64WNsBi37JgxuWRsPWmAoBQCgAqEctzfod01tZvV53r9Q357TALFkDkCCuXxINa48UgRXjeaY15MiguN0Fj6PqnxkWIgC1FpYLqLU52ecNRBlSFLI8SoefFQN/wkhjw+lS0Jm7YQFqK+4kzj+ih/TmLuhCwVNuYcPJUvbdpsqOowBghADwPluu14uptkkgoFAK25ywLr0ZFh3IgxwMAYPlBqowCnjuUOmwAPx5YzIUNNnYGsJuj3YWsLOnlxWJnshvUlLIC2Lr/PyNuQjs0pRGvF4STF0Y5VdVJAAYJQADGqES/p3UABUWF0vlDmVzLTgCL+jNMH9DEvxxXbImABTS3boiDpaFFUB5q52p/odPGJipaXH2+oFksrth7/kaHP2xEFlsVFLHgQBQn8dMU/Sgz9oSVc4mmgQAIQBA4Rs5XzMCAKBO763LaGbOF0v2qLJ+JPySZhtb+n3DUmnkBQJAwqD+zs85kFTZClUdDtn2O+EeVOP0Gc9F1cDxKjQ9qPqP5TTAI5tSmFDpPDUALzMTUDksAGQCPjpeAk12Fzg9veNusmjcAbAtvw1yTd3wFnrksw9V+t1k7gQ+gqP1JPoHrcz2o7pv74bNkWUsN69O1tz0cTLzGabJUQBtEBGOQjWgx1+Do57PBNbIAPDPmIn9wR9yYQqq8ikLI2V4oiGuxMSOpb4+0yhVEYXpFFg5ANxZvBb7PZ+chYOZdRI4+JltDjeC4GV5DwGABgDfFrSxuJnscUqDnRVZaJmFWXjjn8XIYFN8Fcz5MJHZ3cBQ7dltF+Cn4lZ4ZE8h7E+vhVKT3W8GkDqNTDva+HuP6v1j/68ymdDVBaJkWmhOoqHTBfqObkipt8ErcbWaAFy3JAo+OVkC+Y1WqLY4lM+LKm6GL6PLQy43m5QAqPMDZNPvjNANUrc8J3Djp6lBHbyXdmYy+25QCUAaiU5oQI+fPHY+v/9cdI3fZwQCQJnHYnQWy5o7Yf2JEuValWhGfipqhWcQxjvREbzp/Vh4a1c2nK1oVY6hHEN8qYmZHrrW4v35wgQENwEDxZ3cXt4r2+dQAOChF4VhL+7IUFS8pO4d7Hezs4c5kw5VsUiL0wOrLzQrCScJAMln+Ne+XGjv7oHvEvWsCJXCQTVM9BmVGBp+m2digpZMjFOBb2VEIX6fAQ0lABgCANrT5xQ6YU621EtSk6SeZ2hFBwEAkLDuXZ8Eu5IN0IxqugRHayN68TWqsi9KLDm1agvkPP4FYxcsOtcIs7dmwhs/4EgubYGIrHp4Yst5BS4/APyqipzMzpPKL8Po4pv4SrgHv4/iE8jfUwAwBADc438tvg6qbW5WDBKKBqAb/NZPOSxsc8q5AZ7Qsbh72TYxQ6Vt1auCSTsQMGXGTvjr12my4KOVz9ECgENASaIkVP/3b0hWzlN3AcAwADx1uhrmoPdPoeDdh3WwNt0I80LwAaagan74mB6+K2hVJpVsKPgDJW1gsLlDKhLhvcHqgpXhRXDbyniNOYfgAKTq2+GNH7NZ+jfwnLs/PgMz18QLAEJxAinO/3dyIxN8sOTQIBOANn/GrxUMlCcQotMV7bDguwy4dWc+zD9aBSfQrJgcniErhExdbvgFo4WblscMmvsPBgCN+twGC2w4VapEAAMmKRJmrUmA9cdKwOXphae/ShMAhAIAXwqe1+KA/4mpVWbntDKEN36awjzvrxMqYU74gAm5bWsWE8YtCAA//2/o6Z+pt0vZRK9/hVB0kREe+CyZhW/kQL60PUMTAg4As/lo67cn6uCudWdYzK+o+sXSPMDSA/lgaOlSFpUIAEYRBlIJ+N2Hg/gA+Npj+4ogq64D43IHm6CZdUgNQBQCkDcwlSzDsSKtCfLbnKxCiErK3t1Ds32RcAMKn9b0VaLzGFfYzJxKLQBIxR/La1D8gymDKoWiYeH+3EEFIQKAEQLAW9AoAIVJE0avxtfCRXTYytEB23upjWUQCQAS1Lyfi9jCT/V50+V6v2f2FsCN70uq+iEc/ZVGG/R4vewz44pMQTUACZyuHazGgF5f/mvBoL9DABACALRtC63atbo9ypZtwQBQ9/swUvgs2wgXcfTmGe3wVUotJJa3wHtn67XPRQhu/iJdFlgkxOKIV7dgAITS1QDQ31BlssNHh4sZbAKAYQCYLqvph04YIBd9AJpFCwUA3imnf6i8naVqyUn7R1IoAERDvAoAstnR+U1MM4wWgGUH85njt+usDq5bHMWuxYESAAwBAJVhb7poYulf2uV7cUoj+6nlBM7UmDFkx2F/Na4WjurM8M6Zek3/IRAAsvlks22OHtiJjh1N4mgXgkZr+gaBxzy4MVlJHt3xYQLsOWeAv3x2TgAQ6mRQcbsTXkKnbrZKKwwFwNso6Psw3ONVOtKsnlRKrgmPHwBRcCqnAfIMZngABTdl0eCJJTbBg979nR+fZbOKwwFAI/6W5XGw5Jc86MDwUkQBI3QCyXbSsuukhs7gQlT1bFM3GKwuWJdhHBaWQABYChlHPKnqYEKl0G/XWT20djphS2T5sAA8jpAU11vYAlLhBI5BFEBaYChTQDkDHjpmG7vg+ZjakAEYrv8DQ0OTxaGEdF9GVWgeN0WeJxBRwGX6AH04+tUFExIAOthd3A6fZJpglsYIVwNAtjyi0jqMzxAcAD4LyG19s8UpzUzCYAC4TzBtZRxEZNTBv/bmDooCqNNmFnejlhEAhBAF0IxgdLWN7bzFpoPlKOBklZXdzCxjN/Pu5xwamCM4U9fJ3uOj9KjeNmwa+RYNAEh4j36RAov25ykAtNrcA3Chf7IWQzruO9y2Kg7WhBeyZeIUPaz4tVABgEBs6nDAtthKuHl5jBJVCACGAEBdlkUg1OLN5wCcMtiU4yk8pP9zAOaF69lDIWh5WcgAbB4MAG0NS8vMYwuNStjGASBn7o3vs1jpGVuLiMJvxHDT2+dVvteKsCIFgKj8Rpi2KlZZV0gQCABCACBwfcBMeRs3NQDUSs2uQcWjVKwZhccdLDeHDAAr+kDVXWXq1EwEXWqwwjcxFawqiNt5ep1CxcDGAbhxmaQhpq2MZfWKRjQjwgcYIQD+6dtK+DK3Bbo8Axs6BQIw4OBVwl0hzCRyAAITQYEA3LIilqlvGvG7k6rgMzbz5w8AaSQzaojnt6XLi1ai4AX83Wh1KhlNAcBlAsDLto/pLQyCErMz6BzBcKFgMABIWN7+PtiTXKUAQKp7C47i2vZu5gdQnT8HgKqWLA43bDxRwhaM8iKQd366CB7abg4GnEcBwGUAwKdz58sh4avxdXBEZwkxQxgaACTcmrYuWHOokE0Lc6ctu6pdjkx8flHAvI8SITKvEWauSWB+wX3rz7KStMAwUHIe++GJLakCgFEDgP0YRgF1nW5WJUSv8fn/4QC457B+WACOZtbBp8dLYNYHCWwU34pqP9AJ5I0DQJlBAuWGpVGwC01Du93lFwXwRiEgCZ37DgKAUQJATiDf4jW9yc7qBqeHAABB81GGEe5T1f77AxDJ1DytLaBRvDOhEo5mNwwCgLJ6JfVWVixCr1PhyNJf8qDe3K0ZBVi63Wy30LkfJfpFGgKAgEZ2lPL+QwlTHQbycvHCNodyTjC7T6950EHrw+MNtKYvXlrSFQgAjeQNaMctXS527ThVGNiC53nl+P+m92OU/MDd686C1+u/VyAH4KHPk5mJuE5VJsaTRuuOFo+b5WHjAgBKmKQ1dbEJnZnyUqsZGoIMr7D4ra1TRwHLUpvY2sEZYf5mgd7vlaMGvs3syrTmAACi4ACO1D50/viWsuooYGtsBSvqJOE99kUKPLs1bVAUwL/Xwn15iqADq4LJCYzMbQQ3WyMoVgYFaAEphXvKYFXV9vkDMDe8En6t6IAeeTPnEhUAOS0OVj62JKVxIJmk0gDqxSafXWwZMgykYygRxEf6FFlDfJeoY+aHTwZJUYAkeLL/b+++GLCLmCT4W1bEwb7U6nH5FLJxuU0c7bm7s7CNLb7UMgdkLk6jQ5jf6lAA4HMBtI9vprGbPS2cA7A1r5VVGIUKQEmDFV7dmalEAWsPF4GhpVOJ57kTSAB0oMmgEFGy8/5TyGQuNp4sBYPJDn0+sTx8hGbBx8rD3z7TwDZfmBE2OC/w19PVig/AAeBNnQqmc+86rIP42k5wePpgowYAsQVNOIrdTJiB6eFgUQDtMSDtVqaaS1gYxZJAf9uWBhVGm9gl7HJMAvUedLLSm+3wfLR/eTg3EVzVp6IPweYQNSaD+HE0ebQAo42X5RW96lTwmz9ms5oArSogZTIIpJ3E1x+/5Kfi1bOIj25KgZTSFnD0eMVu4WPpJNKN319qhsfkR7wEmgVa/HEI/YN2p7QJwxG9dciMYiAA0lM+tGsAW6xSZKAz2mHloQJWPh5o5+/CiGBrdAV0uXrFbuFX0iy0Oz3MpmsLVwePn6qGmBorROg6RjUbqNUNLXb4GEO36aviBkFCu5F8cuwSmKzOCfl08gn77GB6dMxSDP3maG0egf0vx6vGDIC7MAQMdPAoCfTmj1mQqW9joeVEbRMWABbTo8dfgJGAsq9QmL/NHysABmJ5qUpo9tpESK9sUx4Y0T+BnzQ+oZ8ezm8+PQDiQJmZbSczPcjkz+UAwP2EO9edYQUjFC1MdMFfFQAE+gf0GBl6vOzcUNYRhAAAH/k3LouFf/6cC+Zu91Uh9KsSAN4o21aIZmHhucbLBuC6JTHw9q5syDWYMQq5ugR/1QKgbvG1Nng2smbEAExdGAl/3pAEx7Pr2W7fV3O7qgGg/AE9GTS8ooNtBT89YJJIDYC6vPuX1GplNc/VpvInFQCSoyjV5Td3e1hNgLTdjBQlqFPBtGn0ov25UNPaPSkEP2kAUDeaFaTHzrPNHVUAPPXleahotrFHxk62NqkA4M2FgqZFJv88WgpHMutZ8eZkbZMSANEEAKIJAEQTAIgmABAACAAEAOI2CABEEwD8/zVKu74TVgjvYt+WVDXkcccLmtlxdHyZ0e73PqV8Fx4uhrd/LYBDFxuCXie/wQqv7c+D1/fnw5ZEvV/al2YT6XzqK06UQIfT7ff5YdkN7PND6bGlLX7XXnOylF33g9NlSom5AEBu16xOgD9gf2lP7pDHfR5XyY6jfl5vHvT+TZ8k4bXi8f14uGAwa+b0E8ra/D5PfQwVn/Lrz96UCi12/5Lw1afKlPeH69vPVfude+eXaez1u79KExrgSgNAfdamFKhha/p9Yw4A/4xr2O/a/dtzBr/NrgQAvxEA/P1rVsXDU99ngc3p8RPyWADwHyj8pIo2cHm8QbvH6/W7tgDgNwZAgiABFqNfwHcBHzMA1iRAmsE8or9RAPBbmQAc+bO/SIE5aALo9//+IBHCchqUXTsFAJMAgCe/y4Lceitc/9EZ9v//QoHRw5zGDoB4SKsyB41WtLx8AcBv5gQmwJPfZ7Odu3amVCvH34s3vhUFmlDWOgZOYAI8uiMTFuzNG9Rfxv7WgXwBwEjyAFwgLw4BAFvaHVshCyh+WAD4OcuPXWJagPrczSlwoqCZ/X7ZUcCqhKD9+nVnBQAjAeA/10g3/bndF4c87oNhVHAgANRIiPd9laZEBvd/c+GyAfj9aoLpPDy4LUOzP/ldpgBgJADM/DxFvukprBRbK4FDwnl4ewY7bsraRMhDGx8KAHStZpsTbv00eVCyRjiB42KPIB/8/dcC+D2NSlSf+zPrWfJGLRhKqBQ22tj7dBNv25AMjRZnyABQP1nYjJ+RoJgbAcB40QD4L6rYiMKNl0f3GTiS18R253L1eqHT5WFP7ibPntvyN9HJ6tPYc0cLAAU0Xx+siy5nSZzLNQECgDFuPb198MreXOXmU9h2+8ZzMG9LKsz6IhWu/fAM0xAkOErxdgRZpzcUANTcXi+8ui9PADDeAJAeEumF1SdLmX3nAgrsj+7IQNtvCXqd4QCgVmt2oAOXKgAYbwD0s61g+qGt2wXraXt2HP1/QG//jx+fhRd/yoGkyjZpA+Ygq3bo9W1JBticoIODWfVD+hwNFgdsweMO5zYNAmBzgp7171NrmPlRXz++tIW9R+fWdThG9DfuSqth5+5Oq/WbJBIABIEhWB/yPAjxOHVX3YJAx9Pv/6rrBp4X6t812nMnFQCiCQBEEwCIJgAQTQAgmgBANAGAaAIA0QQAogkARBMAiDaW7f8AmkRMX0PKlwIAAAAASUVORK5CYII="
+
+  using_template   = true
+  template_name    = "UNIFI"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://licensing.inviewlabs.com/api/Login/OneLogin"
+    audience          = "<EntityID provided by UNIFI>"
+    sign_assertion    = "BOTH"
+    name_id_source    = "email"
+    name_id_format    = "unspecified"
+    saml_type         = "IDP"
+    sp_initiated_only = false
+
+    custom_attributes = [
+      {
+        name   = "email"
+        value  = "ns_user_email"
+        format = "unspecified"
+      },
+    ]
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_unifi_app_discoverunifi_com,
+    citrixspa_routing_domain.rd_unifi_customer_fqdn,
+  ]
+}

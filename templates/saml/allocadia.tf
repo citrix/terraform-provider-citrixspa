@@ -1,0 +1,67 @@
+# Allocadia — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_allocadia_secure_allocadia_com" {
+  fqdn         = "secure.allocadia.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "Allocadia"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_allocadia_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "Allocadia"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_allocadia" {
+  name         = "Allocadia"
+  type         = "saas"
+  state        = "complete"
+  description  = "Marketing performance management tool to manage marketing planning process of an organization."
+  url          = "https://secure.allocadia.com/home"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "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"
+
+  using_template   = true
+  template_name    = "Allocadia"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://secure.allocadia.com/allocadia/saml/SSO"
+    audience          = "com:allocadia:vancouver:bc:canada:production"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "SP_IDP"
+    sp_initiated_only = false
+
+    custom_attributes = [
+      {
+        name  = "email"
+        value = "ns_user_email"
+      },
+      {
+        name  = "firstname"
+        value = "aaa.user.attribute(\"givenName\")"
+      },
+    ]
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_allocadia_secure_allocadia_com,
+    citrixspa_routing_domain.rd_allocadia_customer_fqdn,
+  ]
+}

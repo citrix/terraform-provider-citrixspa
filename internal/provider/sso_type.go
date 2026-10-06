@@ -256,7 +256,17 @@ func customAttributesFromAPI(ctx context.Context, apiSSO map[string]any, diags *
 	// Handle native array
 	arr, ok := rawValue.([]any)
 	if !ok {
-		return types.ListNull(CustomAttributeObjectType)
+		// ssoToAPI emits custom_attributes as []map[string]any; Go has no slice
+		// covariance, so that value does not assert to []any. Normalize it here
+		// so the post-create/update SSO restore round-trip preserves attributes.
+		if maps, okMaps := rawValue.([]map[string]any); okMaps {
+			arr = make([]any, len(maps))
+			for i, m := range maps {
+				arr[i] = m
+			}
+		} else {
+			return types.ListNull(CustomAttributeObjectType)
+		}
 	}
 
 	if len(arr) == 0 {

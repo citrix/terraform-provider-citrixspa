@@ -79,7 +79,6 @@ Read-Only:
 Read-Only:
 
 - `platform_filter` (String) Platform filter. Values: `PLATFORM_FILTER_MOBILE`, `PLATFORM_FILTER_PC`, `PLATFORM_FILTER_ANY`.
-- `user_and_groups` (Map of String) User and groups configuration.
 
 <a id="nestedatt--access_rules--restrictions"></a>
 ### Nested Schema for `access_rules.restrictions`
@@ -112,3 +111,4 @@ Read-Only:
   - `TYPE_TAG`: Values corresponding to the chosen `tag_key` (e.g., ISO country codes).
   - `TYPE_MULTIURLDOMAIN`: Domain names.
 - `metadata` (Map of String) Key-value pairs providing display labels for rule values.
+

@@ -1,0 +1,56 @@
+# ProdPad — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_prodpad_app_prodpad_com" {
+  fqdn         = "app.prodpad.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "ProdPad"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_prodpad_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "ProdPad"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_prodpad" {
+  name         = "ProdPad"
+  type         = "saas"
+  state        = "complete"
+  description  = "Product management software to develop product strategies."
+  url          = "https://app.prodpad.com/"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "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"
+
+  using_template   = true
+  template_name    = "ProdPad"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://api.prodpad.com/api/v2/sso/saml/acs"
+    audience          = "https://api.prodpad.com/api/v2/sso/saml/metadata"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "SP_IDP"
+    sp_initiated_only = false
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_prodpad_app_prodpad_com,
+    citrixspa_routing_domain.rd_prodpad_customer_fqdn,
+  ]
+}

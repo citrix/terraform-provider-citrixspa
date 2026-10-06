@@ -101,7 +101,7 @@ resource "citrixspa_access_policy" "allow_developers" {
 
 - `description` (String) Description of the access policy.
 - `active` (Boolean) Whether the access policy is active.
-- `priority` (Number) Priority of the access policy. Must be unique across all policies. Recommended to use spaced-out values (e.g., multiples of 1000).
+- `priority` (Number) Priority of the access policy. Must be unique across all policies; recommended to use spaced-out values (e.g., multiples of 1000). Owned and normalized by the SPA Console on save, so it can be omitted and the Console-assigned value is adopted into state without producing drift.
 - `apps` (Set of String) Set of application IDs to which this access policy applies.
 - `access_rules` (Attributes List) Access rules for the policy. (see [below for nested schema](#nestedatt--access_rules))
 
@@ -114,15 +114,15 @@ resource "citrixspa_access_policy" "allow_developers" {
 
 Required:
 
-- `name` (String) Access rule name. Optional but recommended for readability.
-- `priority` (Number) Access rule priority.
 - `active` (Boolean) Whether the access rule is active.
 - `access` (String) Access type for HTTP apps (web/SaaS). Valid values: `ACCESS_ALLOW`, `ACCESS_DENY`.
 - `rules` (Attributes List) Matching rules within the access rule. Multiple rule types (e.g., `TYPE_USERGROUP`, `TYPE_TAG`, `TYPE_MULTIURLDOMAIN`) can coexist in the same list. (see [below for nested schema](#nestedatt--access_rules--rules))
 
 Optional:
 
+- `name` (String) Access rule name. Optional; the SPA service does not require a name for an access rule. When omitted it is preserved from prior state by matching the rule's content, so an unrelated policy update does not clear a name the Console/API previously assigned.
 - `id` (String) Access rule ID. Typically omitted on creation and assigned by the API.
+- `priority` (Number) Access rule priority. Owned and normalized by the SPA Console on save, so it can be omitted and the Console-assigned value is adopted into state without producing drift. When omitted it is preserved from prior state by matching the rule's content; for a newly added rule it is assigned the next integer above the highest known priority in the list (so all-omitted rules become 1, 2, 3… while a rule added next to an explicit priority 5 becomes 6).
 - `description` (String) Access rule description.
 - `access_native` (String) Access type for TCP apps (ZTNA). Valid values: `ACCESS_ALLOW`, `ACCESS_DENY`.
 - `advanced_settings` (Attributes) Advanced settings for the access rule. (see [below for nested schema](#nestedatt--access_rules--advanced_settings))
@@ -136,13 +136,13 @@ Required:
 
 - `type` (String) Rule type. Valid values: `TYPE_TAG`, `TYPE_USERGROUP`, `TYPE_PLATFORM`, `TYPE_MACHINEGROUP`, `TYPE_MULTIURLDOMAIN`.
 - `operator` (String) Rule operator. Valid values: `OPERATOR_EQ`, `OPERATOR_IN`, etc. When `type` is `TYPE_MULTIURLDOMAIN`, only `OPERATOR_IN` or `OPERATOR_NOT` are accepted.
-- `tag_source` (String) Source of data retrieval for `TYPE_TAG` rules. Must be set to `""` when not applicable (including when `type` is `TYPE_MULTIURLDOMAIN`). Valid values: `""`, `NLS`, `CAS`, `EPA`, `ITM`, `ThirdPartyDevicePosture`, `CONTEXTUAL`.
-- `tag_key` (String) Tag key for `TYPE_TAG` rules (e.g., `location-geo-country-isocode`). Must be set to `""` when not applicable (including when `type` is `TYPE_MULTIURLDOMAIN`).
 - `values` (List of String) Rule values.
 
 Optional:
 
-- `metadata` (Map of String) Rule metadata as key-value pairs, namely usernames-SID/OID pairs (see example above), used for UIX purposes.
+- `tag_source` (String) Source of data retrieval for `TYPE_TAG` rules. May be omitted (or set to `""`) when not applicable (including when `type` is `TYPE_MULTIURLDOMAIN`). Valid values: `""`, `NLS`, `CAS`, `EPA`, `ITM`, `ThirdPartyDevicePosture`, `CONTEXTUAL`.
+- `tag_key` (String) Tag key for `TYPE_TAG` rules (e.g., `location-geo-country-isocode`). May be omitted (or set to `""`) when not applicable (including when `type` is `TYPE_MULTIURLDOMAIN`).
+- `metadata` (Map of String) Rule metadata as key-value pairs, namely usernames-SID/OID pairs (see example above), used for UIX purposes. Required for `TYPE_USERGROUP` rules: `values` must be resolvable directory tokens (`SID:/...`, `OID:/ad/...`, `OID:/azuread/...`) and `metadata` must map a display name to the comma-joined list of those tokens. Omitting it (or using non-resolvable placeholder values) makes the policy's edit page in the SPA Console fail to render.
 
 <a id="nestedatt--access_rules--advanced_settings"></a>
 ### Nested Schema for `access_rules.advanced_settings`
@@ -166,14 +166,57 @@ Required:
 Optional:
 
 - `platform_filter` (String) Platform filter. Valid values: `PLATFORM_FILTER_MOBILE`, `PLATFORM_FILTER_PC`, `PLATFORM_FILTER_ANY`.
-- `user_and_groups` (Map of String) User and groups configuration as key-value pairs.
+- `user_and_groups` (Map of String) **Deprecated.** User and group scope as `identity token => display name` pairs. The SPA service is retiring this field and the provider never sends it. Any entries are translated into an equivalent `rules[]` entry with `type = "TYPE_USERGROUP"` so existing configurations keep working, and a plan-time warning shows the rule to move into `rules[]`. This attribute will be removed in a future release — express user and group scope in `rules[]` instead.
+
+  Migration:
+
+  ```hcl
+  # Before (deprecated)
+  conditions = [
+    {
+      platform_filter = "PLATFORM_FILTER_ANY"
+      user_and_groups = {
+        "SID:/citrix/S-1-5-21-777" = "Engineering"
+      }
+    }
+  ]
+
+  # After
+  conditions = [
+    {
+      platform_filter = "PLATFORM_FILTER_ANY"
+    }
+  ]
+
+  rules = [
+    {
+      type       = "TYPE_USERGROUP"
+      operator   = "OPERATOR_IN"
+      tag_source = ""
+      tag_key    = ""
+      values     = ["SID:/citrix/S-1-5-21-777"]
+      metadata = {
+        "Engineering" = "SID:/citrix/S-1-5-21-777"
+      }
+    }
+  ]
+  ```
+
+  Once translated, the keys are ordinary `TYPE_USERGROUP` rule values, so the same
+  token rules apply to them. Most forms — including `SID:/` and `OID:/` tokens — are
+  stored verbatim and are not validated, so even a key that resolves to nothing (for
+  example `"Everyone"`) still applies successfully; the SPA Console, however, cannot
+  resolve it and its edit page for that policy then fails to render. Two forms *are*
+  validated by the service and make the apply fail with an API error: an `EMAIL:/`
+  token that matches no directory email claim, and `all_users` when the corresponding
+  tenant feature is not enabled. The provider warns at plan time in both cases.
 
 <a id="nestedatt--access_rules--restrictions"></a>
 ### Nested Schema for `access_rules.restrictions`
 
 Optional:
 
-- `redirect_sbs` (Boolean) Whether to redirect to Secure Browser Service.
+- `redirect_sbs` (Boolean) Whether to redirect to Secure Browser Service. Defaults to `false` when omitted.
 - `enhanced_security_settings` (Map of String) Enhanced security settings. Supported keys and their accepted values:
   - `_browserV1`: Only accepted value: `"embeddedBrowser"`.
   - `clipboardV1`: Values: `"enabled"` (default), `"disabled"`.
@@ -184,6 +227,7 @@ Optional:
   - `screenCaptureV1`: Values: `"enabled"`, `"disabled"`.
   - `proxyTrafficV1`: Values: `"direct"`, `"secureBrowse"`.
   - `uploadV1`: Values: `"enabled"`, `"disabled"`.
+  - `insecure_content_allowed_for_urls_v1`: Values: `"enabled"`, `"disabled"` (default).
 
 ## Import
 
@@ -192,3 +236,5 @@ Import is supported using the access policy ID:
 ```shell
 terraform import citrixspa_access_policy.allow_developers 00000000-0000-0000-0000-000000000000
 ```
+
+-> **Note** Express user and group scope as a `rules[]` entry with `type = "TYPE_USERGROUP"` in the configuration you write from an imported state. The deprecated `user_and_groups` attribute is never read back from the service.

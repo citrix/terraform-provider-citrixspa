@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -20,8 +22,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -53,7 +57,7 @@ type ApplicationResourceModel struct {
 	SbsOnlyLaunch        types.Bool   `tfsdk:"sbs_only_launch"`
 	UsingTemplate        types.Bool   `tfsdk:"using_template"`
 	TemplateName         types.String `tfsdk:"template_name"`
-	Icon                 types.String `tfsdk:"icon"`
+	Icon                 IconValue    `tfsdk:"icon"`
 	IconURL              types.String `tfsdk:"icon_url"`
 	RelatedURLs          types.Set    `tfsdk:"related_urls"`
 	Keywords             types.Set    `tfsdk:"keywords"`
@@ -116,14 +120,37 @@ func (r *ApplicationResource) Schema(ctx context.Context, req resource.SchemaReq
 			"description": schema.StringAttribute{
 				MarkdownDescription: "Description of the application",
 				Optional:            true,
+				Computed:            true,
+				// The backend enforces a minimum length and retains the prior value when
+				// the field is omitted, so a set description cannot be cleared. Keep the
+				// prior value when omitted instead of drifting to "", and reject an
+				// explicit "" at plan time (the backend rejects it with "too short").
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"url": schema.StringAttribute{
 				MarkdownDescription: "Application URL (required for non-ZTNA applications)",
 				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString(""),
 			},
 			"category": schema.StringAttribute{
 				MarkdownDescription: "Category of the application",
 				Optional:            true,
+				Computed:            true,
+				// Same backend constraint as description: minimum length, retained when
+				// omitted, so it cannot be cleared once set. Reject an explicit "" at
+				// plan time rather than letting it fail at apply.
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"hidden": schema.BoolAttribute{
 				MarkdownDescription: "Whether to hide the application",
@@ -150,15 +177,24 @@ func (r *ApplicationResource) Schema(ctx context.Context, req resource.SchemaReq
 				Default:             booldefault.StaticBool(false),
 			},
 			"using_template": schema.BoolAttribute{
-				MarkdownDescription: "Whether using a template (required for non-ZTNA applications)",
+				MarkdownDescription: "Whether the application was provisioned from a built-in SPA catalog template (backend) — unrelated to the provider's `templates/` directory. The SPA Console owns and normalizes this flag on save, so it can be omitted; the Console-assigned value is adopted into state without producing drift.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"template_name": schema.StringAttribute{
-				MarkdownDescription: "Template name",
+				MarkdownDescription: "Name of the template to use from the SPA service's built-in application catalog (backend). Applies only when `using_template` is `true`.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"icon": schema.StringAttribute{
-				MarkdownDescription: "Base64 encoded icon data",
+				CustomType:          IconType{},
+				MarkdownDescription: "Base64 encoded icon data. A `data:<mime>;base64,` prefix and any surrounding whitespace are ignored, so wrapped or data-URI base64 is accepted and does not cause a spurious diff.",
 				Optional:            true,
 			},
 			"icon_url": schema.StringAttribute{
@@ -530,14 +566,14 @@ func (r *ApplicationResource) completeApplication(ctx context.Context, applicati
 // tryRecoverOrphanedApplication searches for an application that may have been partially created
 // by the backend despite returning a 500 error. It uses applicationMatchesPlanned to identify
 // the correct resource via a best-effort heuristic (see that function's comment for details).
-func (r *ApplicationResource) tryRecoverOrphanedApplication(ctx context.Context, app *Application) *ApplicationListItem {
+func (r *ApplicationResource) tryRecoverOrphanedApplication(ctx context.Context, app *Application, usingTemplateExplicit bool) *ApplicationListItem {
 	apps, err := r.client.GetApplications(ctx, 0, -1, app.Name, app.Type)
 	if err != nil || apps == nil || len(apps.Applications) == 0 {
 		return nil
 	}
 
 	for _, candidate := range apps.Applications {
-		if r.applicationMatchesPlanned(ctx, &candidate, app) {
+		if r.applicationMatchesPlanned(ctx, &candidate, app, usingTemplateExplicit) {
 			return &candidate
 		}
 	}
@@ -552,7 +588,7 @@ func (r *ApplicationResource) tryRecoverOrphanedApplication(ctx context.Context,
 // creation may have left those fields unpersisted. This means the function can return true
 // for a candidate that is missing some fields — it is intentionally permissive to avoid
 // false negatives during orphan recovery.
-func (r *ApplicationResource) applicationMatchesPlanned(ctx context.Context, candidate *ApplicationListItem, planned *Application) bool {
+func (r *ApplicationResource) applicationMatchesPlanned(ctx context.Context, candidate *ApplicationListItem, planned *Application, usingTemplateExplicit bool) bool {
 	// Name and Type must always match exactly — these are the primary identifiers
 	// used as query filters in tryRecoverOrphanedApplication.
 	if candidate.Name != planned.Name || candidate.Type != planned.Type {
@@ -596,7 +632,12 @@ func (r *ApplicationResource) applicationMatchesPlanned(ctx context.Context, can
 	if candidate.SbsOnlyLaunch && !planned.SbsOnlyLaunch {
 		return false
 	}
-	if candidate.UsingTemplate && !planned.UsingTemplate {
+	// using_template is Console-owned (Optional+Computed): when the user omitted it the
+	// Console may set it true even though planned=false, so an omitted value is not a
+	// reliable discriminator and is skipped. When the user set it explicitly, honor a
+	// definite mismatch (candidate true, planned false) like the other boolean fields so
+	// a contradicting candidate is not wrongly adopted.
+	if usingTemplateExplicit && candidate.UsingTemplate && !planned.UsingTemplate {
 		return false
 	}
 
@@ -703,12 +744,10 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 	}
 	if !data.UsingTemplate.IsNull() {
 		app.UsingTemplate = data.UsingTemplate.ValueBool()
-	} else {
-		app.UsingTemplate = false // Default to false if not set
 	}
 
 	app.TemplateName = data.TemplateName.ValueString()
-	app.Icon = data.Icon.ValueString()
+	app.Icon = normalizeIcon(data.Icon.ValueString())
 
 	// Handle related URLs
 	if !data.RelatedURLs.IsNull() {
@@ -823,6 +862,12 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	// Handle SSO fields
+	//
+	// sentSSO records the SSO payload we send on create (nil when the config
+	// leaves sso unset). It is used after the post-create read to detect and
+	// repair the case where the backend does not echo the configured SSO back
+	// immediately (see the read-back restore below).
+	var sentSSO map[string]any
 	if !data.SSO.IsNull() && !data.SSO.IsUnknown() {
 		ssoModel, ssoDiags := ssoObjectToModel(ctx, data.SSO)
 		resp.Diagnostics.Append(ssoDiags...)
@@ -835,6 +880,7 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 			return
 		}
 		app.SSO = ssoMap
+		sentSSO = ssoMap
 	} else {
 		app.SSO = nil
 	}
@@ -850,12 +896,17 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 		// On 500 errors, the backend may have partially created the application.
 		// Search by name+type to recover the orphan and save its ID to state,
 		// preventing duplicate incomplete applications on the next apply.
-		if strings.Contains(err.Error(), "status 500") {
+		//
+		// Classify on the parsed status, never on the error text: the message
+		// embeds a verbatim echo of the payload we just sent, so a validation
+		// error about a URL like "https://portal.example.com/status 500" would
+		// otherwise start an orphan hunt and adopt whatever it found.
+		if IsInternalServerError(err) {
 			tflog.Warn(ctx, "spa-terraform-provider: Create returned 500, attempting to recover orphaned application", map[string]any{
 				"app_name": app.Name,
 				"app_type": app.Type,
 			})
-			recovered := r.tryRecoverOrphanedApplication(ctx, app)
+			recovered := r.tryRecoverOrphanedApplication(ctx, app, !data.UsingTemplate.IsNull() && !data.UsingTemplate.IsUnknown())
 			if recovered != nil {
 				data.ID = types.StringValue(recovered.ID)
 
@@ -887,6 +938,9 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 				}
 				if data.SSO.IsUnknown() {
 					data.SSO = types.ObjectNull(ssoAttrTypes)
+				}
+				if data.UsingTemplate.IsUnknown() {
+					data.UsingTemplate = types.BoolValue(recovered.UsingTemplate)
 				}
 
 				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -928,6 +982,92 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 	// Copy any diagnostics and the updated state
 	resp.Diagnostics.Append(readResp.Diagnostics...)
 	resp.State = readResp.State
+
+	// Restore the configured SSO if the post-create read did not echo it back.
+	//
+	// Some application types (e.g. a web app whose SSO defaults to
+	// {type:"nosso"}) do not return the SSO object on the GET immediately after
+	// creation, so the read above sets sso to null. When the configuration
+	// specified an SSO, returning null violates Terraform's plan==result
+	// contract ("Provider produced inconsistent result after apply"). Restore
+	// the SSO we sent so state matches the plan; a later refresh reconciles any
+	// backend-computed sub-fields.
+	r.restoreSentSSO(ctx, &resp.State, sentSSO, data.SSO, &resp.Diagnostics)
+}
+
+// restoreSentSSO re-applies the SSO payload sent to the backend when the
+// post-operation read did not echo it back. Some application types omit the SSO
+// object from the GET that immediately follows a create/update, so the read
+// stores a null SSO; returning null when the configuration set an SSO violates
+// Terraform's plan==result contract. Shared by Create and Update so both write
+// paths stay in sync. plannedSSO carries the values Terraform planned for the
+// resource, used to keep server-computed fields consistent (see
+// preserveComputedSSOFields).
+func (r *ApplicationResource) restoreSentSSO(ctx context.Context, state *tfsdk.State, sentSSO map[string]any, plannedSSO types.Object, diags *diag.Diagnostics) {
+	if sentSSO == nil || diags.HasError() {
+		return
+	}
+	var stateData ApplicationResourceModel
+	diags.Append(state.Get(ctx, &stateData)...)
+	if diags.HasError() || !stateData.SSO.IsNull() {
+		return
+	}
+	ssoModel, ssoDiags := ssoFromAPI(ctx, sentSSO)
+	diags.Append(ssoDiags...)
+	if diags.HasError() {
+		return
+	}
+	// ssoToAPI strips the server-computed fields from sentSSO, so restoring
+	// solely from it would null them out. On update the plan keeps their prior
+	// values known via UseStateForUnknown; preserve those to satisfy the
+	// plan==result contract. On create the planned values are unknown and stay
+	// null.
+	if !plannedSSO.IsNull() && !plannedSSO.IsUnknown() {
+		plannedModel, planDiags := ssoObjectToModel(ctx, plannedSSO)
+		diags.Append(planDiags...)
+		if diags.HasError() {
+			return
+		}
+		preserveComputedSSOFields(ssoModel, plannedModel)
+	}
+	ssoObj, objDiags := ssoModelToObject(ctx, ssoModel)
+	diags.Append(objDiags...)
+	if diags.HasError() {
+		return
+	}
+	stateData.SSO = ssoObj
+	diags.Append(state.Set(ctx, &stateData)...)
+}
+
+// preserveComputedSSOFields copies the server-computed SSO fields that ssoToAPI
+// omits from the write payload (saml_sso_login_url, saml_cert_issuer_name,
+// customer) from planned into reconstructed whenever the planned value is known.
+// This keeps the restored state aligned with a plan that carried those values
+// forward via UseStateForUnknown (the update path); on create they are unknown
+// and left untouched.
+func preserveComputedSSOFields(reconstructed, planned *SSOModel) {
+	if reconstructed == nil || planned == nil {
+		return
+	}
+	keep := func(dst *types.String, src types.String) {
+		if !src.IsNull() && !src.IsUnknown() {
+			*dst = src
+		}
+	}
+	keep(&reconstructed.SamlSSOLoginURL, planned.SamlSSOLoginURL)
+	keep(&reconstructed.SamlCertIssuerName, planned.SamlCertIssuerName)
+	keep(&reconstructed.Customer, planned.Customer)
+}
+
+// shouldAwaitSSO reports whether Read should use the bounded SSO re-fetch
+// (GetApplicationAwaitSSO) instead of a single GET. It returns true on import —
+// where ImportState passes through only the ID, so the prior name is null — and
+// when the prior state already had an SSO object, so a transient empty read in
+// the post-write consistency window is smoothed over instead of recorded as
+// drift. A settled application whose prior state has no SSO returns false and is
+// read with a single GET, avoiding extra GETs on every routine refresh.
+func shouldAwaitSSO(priorName types.String, priorSSO types.Object) bool {
+	return priorName.IsNull() || !priorSSO.IsNull()
 }
 
 func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -940,10 +1080,19 @@ func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	// Get the application from the API
-	app, err := r.client.GetApplication(ctx, data.ID.ValueString())
+	// Get the application from the API. shouldAwaitSSO decides whether to use the
+	// bounded SSO re-fetch (import, or when prior state already had an SSO object)
+	// or a single GET (a settled application with no SSO), so routine refreshes of
+	// SSO-less applications don't pay extra GETs.
+	var app *Application
+	var err error
+	if shouldAwaitSSO(data.Name, data.SSO) {
+		app, err = r.client.GetApplicationAwaitSSO(ctx, data.ID.ValueString())
+	} else {
+		app, err = r.client.GetApplication(ctx, data.ID.ValueString())
+	}
 	if err != nil {
-		if strings.Contains(err.Error(), "404") {
+		if IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
@@ -957,19 +1106,17 @@ func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest
 	data.State = types.StringValue(app.State)
 	data.PolicyCount = types.StringValue(app.PolicyCount)
 
-	// Handle optional string fields - set to null if empty string from API
+	// The backend never stores an empty description/category (min length 1), so an
+	// empty API value means "unset" and reads back as null; a non-empty value reads
+	// back as-is. UseStateForUnknown then keeps an omitted value at its prior state,
+	// and the LengthAtLeast(1) validator rejects an explicit "". url is required and
+	// always a known string.
 	if app.Description != "" {
 		data.Description = types.StringValue(app.Description)
 	} else {
 		data.Description = types.StringNull()
 	}
-
-	if app.URL != "" {
-		data.URL = types.StringValue(app.URL)
-	} else {
-		data.URL = types.StringNull()
-	}
-
+	data.URL = types.StringValue(app.URL)
 	if app.Category != "" {
 		data.Category = types.StringValue(app.Category)
 	} else {
@@ -983,9 +1130,9 @@ func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 
 	if app.Icon != "" {
-		data.Icon = types.StringValue(app.Icon)
+		data.Icon = NewIconValue(app.Icon)
 	} else {
-		data.Icon = types.StringNull()
+		data.Icon = NewIconNull()
 	}
 
 	if app.IconURL != "" {
@@ -1208,7 +1355,7 @@ func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	app.TemplateName = data.TemplateName.ValueString()
-	app.Icon = data.Icon.ValueString()
+	app.Icon = normalizeIcon(data.Icon.ValueString())
 	app.IconURL = data.IconURL.ValueString()
 
 	// Handle related URLs
@@ -1317,6 +1464,7 @@ func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	// Handle SSO fields
+	var sentSSO map[string]any
 	if !data.SSO.IsNull() && !data.SSO.IsUnknown() {
 		ssoModel, ssoDiags := ssoObjectToModel(ctx, data.SSO)
 		resp.Diagnostics.Append(ssoDiags...)
@@ -1329,6 +1477,7 @@ func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateReq
 			return
 		}
 		app.SSO = ssoMap
+		sentSSO = ssoMap
 	} else {
 		app.SSO = nil
 	}
@@ -1389,6 +1538,105 @@ func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateReq
 	// Copy any diagnostics and the updated state
 	resp.Diagnostics.Append(readResp.Diagnostics...)
 	resp.State = readResp.State
+
+	// Restore the configured SSO if the post-update read did not echo it back
+	// (same plan==result contract as Create; see restoreSentSSO).
+	r.restoreSentSSO(ctx, &resp.State, sentSSO, data.SSO, &resp.Diagnostics)
+}
+
+// urlHostname reduces a configured URL to the bare hostname the backend stores
+// as a routing domain FQDN, or "" when none can be derived. It mirrors the
+// backend's _extract_url_hostname (spaconfig, gatewaycore/adminapi/routing/
+// graph_handlers.py): parse, then retry scheme-less input as an authority so
+// that "host:port" yields "host" rather than being read as scheme plus opaque.
+func urlHostname(raw string) string {
+	if parsed, err := url.Parse(raw); err == nil && parsed.Hostname() != "" {
+		return parsed.Hostname()
+	}
+	if !strings.Contains(raw, "://") {
+		if parsed, err := url.Parse("//" + raw); err == nil && parsed.Hostname() != "" {
+			return parsed.Hostname()
+		}
+	}
+	return ""
+}
+
+// urlAuthority reduces a value whose hostname could not be parsed to its
+// authority, dropping the scheme prefix and everything from the first "/", "?"
+// or "#". The service stores any url that contains no bare "%" and no double
+// quote, so a value Go cannot parse can still reach state; without this the
+// delete warning would echo that value's path and query — which may carry a
+// token — into customer-visible and CI output.
+func urlAuthority(raw string) string {
+	if scheme := strings.Index(raw, "://"); scheme >= 0 {
+		raw = raw[scheme+len("://"):]
+	}
+	if cut := strings.IndexAny(raw, "/?#"); cut >= 0 {
+		raw = raw[:cut]
+	}
+	return strings.TrimSpace(raw)
+}
+
+// applicationFQDNs returns the FQDNs an application references, in the form the
+// backend stores routing domains. Never returns an error: a value whose hostname
+// cannot be derived is reduced to its authority rather than dropped, so a delete
+// is never blocked by a formatting problem in state.
+func applicationFQDNs(ctx context.Context, data *ApplicationResourceModel) []string {
+	fqdns := []string{}
+	seen := make(map[string]bool)
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		// An FQDN never contains "@", so drop any userinfo prefix rather than
+		// echo embedded credentials back in a customer-visible warning.
+		if at := strings.LastIndex(value, "@"); at >= 0 {
+			value = value[at+1:]
+		}
+		// The backend lower-cases every FQDN it stores, so match it.
+		value = strings.ToLower(value)
+		if value == "" || seen[value] {
+			return
+		}
+		seen[value] = true
+		fqdns = append(fqdns, value)
+	}
+	// addHost applies the backend's hostname reduction, falling back to the
+	// value's authority when it yields nothing. Not used for ZTNA destinations,
+	// which the backend stores verbatim — parsing those would truncate a CIDR
+	// suffix.
+	addHost := func(value string) {
+		value = strings.TrimSpace(value)
+		if host := urlHostname(value); host != "" {
+			add(host)
+			return
+		}
+		add(urlAuthority(value))
+	}
+
+	if !data.URL.IsNull() && !data.URL.IsUnknown() {
+		if raw := strings.TrimSpace(data.URL.ValueString()); raw != "" {
+			addHost(raw)
+		}
+	}
+
+	if !data.RelatedURLs.IsNull() && !data.RelatedURLs.IsUnknown() {
+		var relatedURLs []string
+		if diags := data.RelatedURLs.ElementsAs(ctx, &relatedURLs, false); !diags.HasError() {
+			for _, related := range relatedURLs {
+				addHost(related)
+			}
+		}
+	}
+
+	if !data.Destination.IsNull() && !data.Destination.IsUnknown() {
+		var destinations []DestinationModel
+		if diags := data.Destination.ElementsAs(ctx, &destinations, false); !diags.HasError() {
+			for _, dest := range destinations {
+				add(dest.Destination.ValueString())
+			}
+		}
+	}
+
+	return fqdns
 }
 
 func (r *ApplicationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -1407,6 +1655,18 @@ func (r *ApplicationResource) Delete(ctx context.Context, req resource.DeleteReq
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete application, got error: %s", err))
 		return
+	}
+
+	// "may": the provider cannot see the tenant's other live applications, which
+	// is what decides whether each FQDN's routing domain is retained.
+	if fqdns := applicationFQDNs(ctx, &data); len(fqdns) > 0 {
+		resp.Diagnostics.AddWarning(
+			"Routing Domains May Also Be Deleted",
+			fmt.Sprintf("Deleting this application may also delete the routing domains for: %s.\n\n"+
+				"Citrix Secure Private Access deletes a routing domain whose FQDN matches one of this application's url, related_urls or destination values, "+
+				"unless another application still references the same FQDN. See Note 3 in the citrixspa_routing_domain documentation for the full rule.",
+				strings.Join(fqdns, ", ")),
+		)
 	}
 }
 

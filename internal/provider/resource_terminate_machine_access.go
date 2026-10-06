@@ -6,9 +6,11 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -56,30 +58,50 @@ func (r *TerminateMachineAccessResource) Schema(ctx context.Context, req resourc
 			"account_name": schema.StringAttribute{
 				MarkdownDescription: "Machine account name",
 				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "Machine name",
-				Required:            true,
+				MarkdownDescription: "Machine name. Optional; the SPA service does not require it (only account_name, object_id and idp_type identify the machine).",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"dns_host_name": schema.StringAttribute{
 				MarkdownDescription: "DNS host name",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"domain_name": schema.StringAttribute{
 				MarkdownDescription: "Domain name",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"object_id": schema.StringAttribute{
-				MarkdownDescription: "Object ID",
-				Optional:            true,
-				Computed:            true,
+				MarkdownDescription: "Object ID. Required; identifies the machine together with account_name and idp_type.",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"idp_type": schema.StringAttribute{
-				MarkdownDescription: "IDP type",
-				Optional:            true,
-				Computed:            true,
+				MarkdownDescription: "IDP type. Required; identifies the machine together with account_name and object_id.",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			// "created_time": schema.Int64Attribute{
 			// 	MarkdownDescription: "Created time",
@@ -90,6 +112,10 @@ func (r *TerminateMachineAccessResource) Schema(ctx context.Context, req resourc
 				MarkdownDescription: "Duration",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+					int64planmodifier.RequiresReplace(),
+				},
 			},
 		},
 	}
@@ -140,16 +166,33 @@ func (r *TerminateMachineAccessResource) Create(ctx context.Context, req resourc
 		return
 	}
 
-	// Update the model with the created machine access data
-	data.ID = types.StringValue(createdMachine.ID)
-	data.AccountName = types.StringValue(createdMachine.AccountName)
-	data.Name = types.StringValue(createdMachine.Name)
-	data.DNSHostName = types.StringValue(createdMachine.DNSHostName)
-	data.DomainName = types.StringValue(createdMachine.DomainName)
-	data.ObjectID = types.StringValue(createdMachine.ObjectID)
-	data.IDPType = types.StringValue(createdMachine.IDPType)
-	// data.CreatedTime = types.StringValue(createdMachine.CreatedTime)
-	data.Duration = types.Int64Value(int64(createdMachine.Duration))
+	// The create API only echoes back id and object_id, so re-read the full
+	// stored record to resolve any omitted (unknown) optional/computed fields. If
+	// the record is not yet visible in the list API (eventual consistency) or the
+	// list call fails, fall back to the create response rather than failing apply.
+	storedMachine, err := r.client.GetTerminateMachineAccessByID(ctx, createdMachine.ID)
+	if err != nil {
+		tflog.Warn(ctx, "spa-terraform-provider: terminate machine access not readable immediately after create; using create response", map[string]any{"id": createdMachine.ID})
+		storedMachine = createdMachine
+	}
+
+	// The server-assigned ID is authoritative. Required identity fields keep their
+	// configured (plan) values. For optional/computed fields, preserve the
+	// user-configured value and only fall back to the stored record when the
+	// configuration omitted the field (left it unknown).
+	data.ID = types.StringValue(storedMachine.ID)
+	if data.Name.IsUnknown() {
+		data.Name = types.StringValue(storedMachine.Name)
+	}
+	if data.DNSHostName.IsUnknown() {
+		data.DNSHostName = types.StringValue(storedMachine.DNSHostName)
+	}
+	if data.DomainName.IsUnknown() {
+		data.DomainName = types.StringValue(storedMachine.DomainName)
+	}
+	if data.Duration.IsUnknown() {
+		data.Duration = types.Int64Value(int64(storedMachine.Duration))
+	}
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

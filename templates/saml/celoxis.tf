@@ -1,0 +1,55 @@
+# Celoxis — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_celoxis_app_celoxis_com" {
+  fqdn         = "app.celoxis.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "Celoxis"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_celoxis_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "Celoxis"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_celoxis" {
+  name         = "Celoxis"
+  type         = "saas"
+  state        = "complete"
+  description  = "Project management tool to create project plans, automate work and collaborate."
+  url          = "https://app.celoxis.com/"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "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"
+
+  using_template   = true
+  template_name    = "Celoxis"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://app.celoxis.com/psa/person.Login.do?code=<customer_id>"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "SP_IDP"
+    sp_initiated_only = false
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_celoxis_app_celoxis_com,
+    citrixspa_routing_domain.rd_celoxis_customer_fqdn,
+  ]
+}

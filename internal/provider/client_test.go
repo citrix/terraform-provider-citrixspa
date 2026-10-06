@@ -3,6 +3,7 @@ package provider
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -547,5 +548,234 @@ func TestDeleteSessionPolicy_404TreatedAsSuccess(t *testing.T) {
 	err := client.DeleteSessionPolicy(context.Background(), "policy-123")
 	if err != nil {
 		t.Fatalf("expected nil error for 404 on delete, got: %v", err)
+	}
+}
+
+// TestApplicationMarshalsFalseBooleans guards the write path: the boolean
+// fields on Application must be emitted even when false. If omitempty is
+// reintroduced on any of them, the key disappears and the backend keeps its
+// previous value, producing an "inconsistent result after apply" error.
+func TestApplicationMarshalsFalseBooleans(t *testing.T) {
+	app := Application{
+		Name:            "test",
+		Type:            "web",
+		Hidden:          false,
+		AgentlessAccess: false,
+		MobileSecurity:  false,
+		SbsOnlyLaunch:   false,
+		UsingTemplate:   false,
+	}
+
+	data, err := json.Marshal(app)
+	if err != nil {
+		t.Fatalf("failed to marshal Application: %v", err)
+	}
+
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal Application JSON: %v", err)
+	}
+
+	for _, key := range []string{"hidden", "agentlessAccess", "mobileSecurity", "sbsOnlyLaunch", "usingTemplate"} {
+		raw, ok := decoded[key]
+		if !ok {
+			t.Errorf("expected key %q to be present in marshaled Application, but it was omitted", key)
+			continue
+		}
+		if string(raw) != "false" {
+			t.Errorf("expected key %q to be false, got %s", key, raw)
+		}
+	}
+}
+
+// TestRestrictionsMarshalsFalseRedirectSBS guards the write path: redirectSBS
+// must be emitted even when false. If omitempty is reintroduced, toggling
+// redirect_sbs from true to false drops the key, the backend keeps true, and
+// apply fails with "inconsistent result after apply" (was cty.False, now
+// cty.True).
+func TestRestrictionsMarshalsFalseRedirectSBS(t *testing.T) {
+	data, err := json.Marshal(Restrictions{RedirectSBS: false})
+	if err != nil {
+		t.Fatalf("failed to marshal Restrictions: %v", err)
+	}
+
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal Restrictions JSON: %v", err)
+	}
+
+	raw, ok := decoded["redirectSBS"]
+	if !ok {
+		t.Fatal(`expected key "redirectSBS" to be present in marshaled Restrictions, but it was omitted`)
+	}
+	if string(raw) != "false" {
+		t.Errorf("expected key \"redirectSBS\" to be false, got %s", raw)
+	}
+}
+
+// TestApplicationMarshalsEmptyOptionalStrings guards the write path: url is
+// required by the backend and must always be emitted, even as "". description
+// and category are omitted when empty: the backend enforces a minimum length
+// and rejects "", and it retains the prior value when the field is omitted, so
+// an empty value must be dropped rather than sent as "".
+func TestApplicationMarshalsEmptyOptionalStrings(t *testing.T) {
+	app := Application{Name: "test", Type: "web", Description: "", URL: "", Category: ""}
+
+	data, err := json.Marshal(app)
+	if err != nil {
+		t.Fatalf("failed to marshal Application: %v", err)
+	}
+
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal Application JSON: %v", err)
+	}
+
+	raw, ok := decoded["url"]
+	if !ok {
+		t.Error(`expected key "url" to be present (as "") in marshaled Application, but it was omitted`)
+	} else if string(raw) != `""` {
+		t.Errorf("expected key \"url\" to be \"\", got %s", raw)
+	}
+
+	for _, key := range []string{"description", "category"} {
+		if _, ok := decoded[key]; ok {
+			t.Errorf("expected key %q to be omitted when empty (backend rejects \"\" and retains on omit), but it was present", key)
+		}
+	}
+}
+
+// TestAccessRuleMarshalsEmptyStrings asserts the write-path access-rule/rule
+// clearable strings are sent as "" rather than dropped. If description,
+// tagSource, or tagKey carries json:",omitempty", a planned "" is omitted from
+// the request body and a previously-set value never clears on an in-place
+// update, reproducing the inconsistent-result error this change targets.
+func TestAccessRuleMarshalsEmptyStrings(t *testing.T) {
+	rule := AccessRule{
+		Name:     "rule",
+		Priority: 1,
+		Active:   true,
+		Rules: []Rule{
+			{Type: "TYPE_TAG", Operator: "OPERATOR_IN", TagSource: "", TagKey: ""},
+		},
+	}
+
+	data, err := json.Marshal(rule)
+	if err != nil {
+		t.Fatalf("failed to marshal AccessRule: %v", err)
+	}
+
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal AccessRule JSON: %v", err)
+	}
+	if _, ok := decoded["description"]; !ok {
+		t.Error(`expected key "description" to be present (as "") in marshaled AccessRule, but it was omitted`)
+	}
+
+	var rules []map[string]json.RawMessage
+	if err := json.Unmarshal(decoded["rules"], &rules); err != nil {
+		t.Fatalf("failed to unmarshal rules: %v", err)
+	}
+	for _, key := range []string{"tagSource", "tagKey"} {
+		if _, ok := rules[0][key]; !ok {
+			t.Errorf("expected key %q to be present (as \"\") in marshaled Rule, but it was omitted", key)
+		}
+	}
+}
+
+// newTestClientWithResponder builds an APIClient whose transport is driven by
+// the supplied responder, so a test can return a different body per call.
+func newTestClientWithResponder(responder func(callNum int, req *http.Request) (int, string)) (*APIClient, *int32) {
+	var calls int32
+	client := NewAPIClient("https://test.example.com", "cust-123", "tok-abc", nil, 0, false, false, nil, "test-agent")
+	client.HTTPClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		n := atomic.AddInt32(&calls, 1)
+		status, body := responder(int(n), req)
+		return &http.Response{
+			StatusCode: status,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})
+	return client, &calls
+}
+
+// TestGetApplicationAwaitSSO_RefetchesUntilSSOAppears asserts the read-back
+// helper re-fetches when the GET omits the SSO object and stops as soon as a
+// later GET returns it — the import/refresh consistency-window fix.
+func TestGetApplicationAwaitSSO_RefetchesUntilSSOAppears(t *testing.T) {
+	origBackoff := ssoReadbackBackoff
+	ssoReadbackBackoff = 0
+	defer func() { ssoReadbackBackoff = origBackoff }()
+
+	client, calls := newTestClientWithResponder(func(n int, _ *http.Request) (int, string) {
+		if n >= 3 {
+			return http.StatusOK, `{"id":"app-1","name":"n","type":"web","sso":{"type":"nosso"}}`
+		}
+		return http.StatusOK, `{"id":"app-1","name":"n","type":"web"}`
+	})
+
+	app, err := client.GetApplicationAwaitSSO(context.Background(), "app-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(app.SSO) == 0 {
+		t.Fatal("expected SSO to be populated after re-fetch, got empty")
+	}
+	if got := atomic.LoadInt32(calls); got != 3 {
+		t.Errorf("expected 3 GETs (2 empty + 1 populated), got %d", got)
+	}
+}
+
+// TestGetApplicationAwaitSSO_EmptyStaysEmptyAfterBudget asserts an application
+// that genuinely has no SSO exhausts the bounded budget and returns empty
+// rather than looping forever.
+func TestGetApplicationAwaitSSO_EmptyStaysEmptyAfterBudget(t *testing.T) {
+	origBackoff, origRetries := ssoReadbackBackoff, ssoReadbackRetries
+	ssoReadbackBackoff, ssoReadbackRetries = 0, 2
+	defer func() { ssoReadbackBackoff, ssoReadbackRetries = origBackoff, origRetries }()
+
+	client, calls := newTestClientWithResponder(func(_ int, _ *http.Request) (int, string) {
+		return http.StatusOK, `{"id":"app-1","name":"n","type":"web"}`
+	})
+
+	app, err := client.GetApplicationAwaitSSO(context.Background(), "app-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(app.SSO) != 0 {
+		t.Fatalf("expected SSO to stay empty, got %v", app.SSO)
+	}
+	if got := atomic.LoadInt32(calls); got != 3 {
+		t.Errorf("expected 3 GETs (1 initial + 2 retries), got %d", got)
+	}
+}
+
+// TestGetApplicationAwaitSSO_RetryErrorPropagates asserts that a failed re-fetch
+// is surfaced as an error rather than returning the SSO-less initial response as
+// success. Swallowing the error would persist sso=null and defeat the guard.
+func TestGetApplicationAwaitSSO_RetryErrorPropagates(t *testing.T) {
+	origBackoff := ssoReadbackBackoff
+	ssoReadbackBackoff = 0
+	defer func() { ssoReadbackBackoff = origBackoff }()
+
+	client, calls := newTestClientWithResponder(func(n int, _ *http.Request) (int, string) {
+		if n == 1 {
+			return http.StatusOK, `{"id":"app-1","name":"n","type":"web"}`
+		}
+		return http.StatusInternalServerError, `{"error":"transient"}`
+	})
+
+	app, err := client.GetApplicationAwaitSSO(context.Background(), "app-1")
+	if err == nil {
+		t.Fatalf("expected re-fetch error to propagate, got app=%v", app)
+	}
+	if app != nil {
+		t.Errorf("expected nil app on error, got %v", app)
+	}
+	if got := atomic.LoadInt32(calls); got != 2 {
+		t.Errorf("expected 2 GETs (1 empty + 1 failed retry), got %d", got)
 	}
 }

@@ -1,0 +1,56 @@
+# ProductBoard — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_productboard_customer_domain_productboard_com" {
+  fqdn         = "<customer-domain>.productboard.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "ProductBoard"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_productboard_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "ProductBoard"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_productboard" {
+  name         = "ProductBoard"
+  type         = "saas"
+  state        = "complete"
+  description  = "productboard is the product management tool that helps you understand what users need, prioritize what to build, and rally everyone around your roadmap"
+  url          = "https://<customer-domain>.productboard.com"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "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"
+
+  using_template   = true
+  template_name    = "ProductBoard"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://<customer-domain>.productboard.com"
+    audience          = "https://<customer-domain>.productboard.com"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "IDP"
+    sp_initiated_only = false
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_productboard_customer_domain_productboard_com,
+    citrixspa_routing_domain.rd_productboard_customer_fqdn,
+  ]
+}

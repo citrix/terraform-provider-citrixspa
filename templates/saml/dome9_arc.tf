@@ -1,0 +1,55 @@
+# DOME9 ARC — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_dome9_arc_secure_dome9_com" {
+  fqdn         = "secure.dome9.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "DOME9 ARC"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_dome9_arc_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "DOME9 ARC"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_dome9_arc" {
+  name         = "DOME9 ARC"
+  type         = "saas"
+  state        = "complete"
+  description  = "Security and compliance tool to manage public cloud environments."
+  url          = "https://secure.dome9.com/v2/"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "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"
+
+  using_template   = true
+  template_name    = "DOME9 ARC"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://secure.dome9.com/sso/saml/<your-organization>"
+    sign_assertion    = "BOTH"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "SP_IDP"
+    sp_initiated_only = false
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_dome9_arc_secure_dome9_com,
+    citrixspa_routing_domain.rd_dome9_arc_customer_fqdn,
+  ]
+}

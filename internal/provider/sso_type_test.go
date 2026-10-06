@@ -545,6 +545,109 @@ func TestSSOToAPI_WithCustomAttributes(t *testing.T) {
 	}
 }
 
+// TestSSORoundTrip_CustomAttributesPreserved guards the post-create/update SSO
+// restore path. ssoToAPI emits custom_attributes as []map[string]any, so
+// ssoFromAPI must accept that shape; otherwise the restore silently drops
+// custom_attributes and a SAML app whose immediate GET omits SSO fails with
+// "Provider produced inconsistent result after apply".
+func TestSSORoundTrip_CustomAttributesPreserved(t *testing.T) {
+	ctx := context.Background()
+
+	ca, _ := types.ObjectValue(customAttributeAttrTypes, map[string]attr.Value{
+		"format":      types.StringValue("uri"),
+		"name":        types.StringValue("attr1"),
+		"value":       types.StringValue("val1"),
+		"prefix_expr": types.BoolValue(true),
+	})
+	caList, _ := types.ListValue(CustomAttributeObjectType, []attr.Value{ca})
+
+	model := &SSOModel{
+		Type:             types.StringValue("saml"),
+		CustomAttributes: caList,
+	}
+
+	sent, diags := ssoToAPI(ctx, model)
+	if diags.HasError() {
+		t.Fatalf("ssoToAPI diagnostics: %v", diags)
+	}
+
+	got, diags := ssoFromAPI(ctx, sent)
+	if diags.HasError() {
+		t.Fatalf("ssoFromAPI diagnostics: %v", diags)
+	}
+	if got.CustomAttributes.IsNull() {
+		t.Fatal("custom_attributes lost on ssoToAPI -> ssoFromAPI round-trip; the SSO restore would drop them")
+	}
+	if n := len(got.CustomAttributes.Elements()); n != 1 {
+		t.Fatalf("expected 1 custom attribute after round-trip, got %d", n)
+	}
+}
+
+// TestPreserveComputedSSOFields_UpdatePreservesKnown guards the update SSO
+// restore path. ssoToAPI strips the server-computed fields (saml_sso_login_url,
+// saml_cert_issuer_name, customer), so a model rebuilt from the sent payload has
+// them null. On update the plan keeps their prior values known via
+// UseStateForUnknown; preserveComputedSSOFields must carry those known values
+// forward, otherwise the restored state nulls them and Terraform reports
+// "Provider produced inconsistent result after apply".
+func TestPreserveComputedSSOFields_UpdatePreservesKnown(t *testing.T) {
+	reconstructed := &SSOModel{
+		Type:               types.StringValue("saml"),
+		SamlSSOLoginURL:    types.StringNull(),
+		SamlCertIssuerName: types.StringNull(),
+		Customer:           types.StringNull(),
+	}
+	planned := &SSOModel{
+		Type:               types.StringValue("saml"),
+		SamlSSOLoginURL:    types.StringValue("https://login.example.com"),
+		SamlCertIssuerName: types.StringValue("issuer"),
+		Customer:           types.StringValue("cust-123"),
+	}
+
+	preserveComputedSSOFields(reconstructed, planned)
+
+	if got := reconstructed.SamlSSOLoginURL.ValueString(); got != "https://login.example.com" {
+		t.Errorf("saml_sso_login_url not preserved from plan, got %q", got)
+	}
+	if got := reconstructed.SamlCertIssuerName.ValueString(); got != "issuer" {
+		t.Errorf("saml_cert_issuer_name not preserved from plan, got %q", got)
+	}
+	if got := reconstructed.Customer.ValueString(); got != "cust-123" {
+		t.Errorf("customer not preserved from plan, got %q", got)
+	}
+}
+
+// TestPreserveComputedSSOFields_CreateLeavesUnknownNull confirms the create path
+// is unaffected: when the plan carries unknown computed values (as on create),
+// preserveComputedSSOFields leaves the reconstructed values as-is (null) rather
+// than writing unknowns into state.
+func TestPreserveComputedSSOFields_CreateLeavesUnknownNull(t *testing.T) {
+	reconstructed := &SSOModel{
+		Type:               types.StringValue("saml"),
+		SamlSSOLoginURL:    types.StringNull(),
+		SamlCertIssuerName: types.StringNull(),
+		Customer:           types.StringNull(),
+	}
+	planned := &SSOModel{
+		Type:               types.StringValue("saml"),
+		SamlSSOLoginURL:    types.StringUnknown(),
+		SamlCertIssuerName: types.StringUnknown(),
+		Customer:           types.StringUnknown(),
+	}
+
+	preserveComputedSSOFields(reconstructed, planned)
+
+	if !reconstructed.SamlSSOLoginURL.IsNull() {
+		t.Error("saml_sso_login_url should stay null when plan value is unknown")
+	}
+	if !reconstructed.SamlCertIssuerName.IsNull() {
+		t.Error("saml_cert_issuer_name should stay null when plan value is unknown")
+	}
+	if !reconstructed.Customer.IsNull() {
+		t.Error("customer should stay null when plan value is unknown")
+	}
+}
+
 // --- ssoModelToObject / ssoObjectToModel ---
 
 func TestSSOModelToObject_Nil(t *testing.T) {

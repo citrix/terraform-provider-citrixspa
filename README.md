@@ -146,6 +146,8 @@ resource "citrixspa_routing_domain" "internal_domain" {
 }
 ```
 
+> **Note:** Deleting a `citrixspa_application` also deletes the routing domains whose FQDN matches that application's `url`, `related_urls` or `destination` values, unless another live application still references the same FQDN. This includes routing domains declared separately. See [Note 3 in the `citrixspa_routing_domain` documentation](docs/resources/routing_domain.md) for the full rule and how to resolve the resulting drift.
+
 ### Data Sources
 
 ```hcl
@@ -181,7 +183,7 @@ data "citrixspa_routing_domain" "domain" {
 
 ### Routing Domain Types
 
-- `internal`, `external`, `external_via_connector`, `conflicting`, `internal_bypass_proxy`
+- `internal`, `external`, `conflicting`, `internal_bypass_proxy`, `internal_via_gateway`, `external_fixed_ip`
 
 ## Local Development
 
@@ -224,7 +226,7 @@ cp test-local-sp/terraform.tfvars.example test-local-sp/terraform.tfvars
 The script performs these steps automatically:
 
 1. `make build` — compiles the provider binary
-2. `make install` — copies the binary to `~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/0.1.0/<os>_<arch>/`
+2. `make install` — copies the binary to `~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.0/<os>_<arch>/`
 3. `./generate-terraformrc.sh` — creates a `.terraformrc` file that tells Terraform to use the local binary instead of downloading from the registry
 4. `terraform init -reconfigure` — initializes Terraform with the local provider
 5. `terraform validate` — validates the configuration
@@ -272,7 +274,6 @@ TF_CLI_CONFIG_FILE=../.terraformrc terraform plan         # Plan
 | `make testacc` | Run acceptance tests (requires `TF_ACC=1` and credentials) |
 | `make fmt` | Format Go code and Terraform examples |
 | `make lint` | Run golangci-lint |
-| `make docs` | Generate provider documentation |
 | `make clean` | Remove build artifacts |
 | `make check` | Run fmt + lint + test |
 

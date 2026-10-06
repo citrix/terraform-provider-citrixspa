@@ -309,3 +309,68 @@ func TestRetryAfterWait(t *testing.T) {
 		})
 	}
 }
+
+// TestAuthenticatedClient_CacheKeyBoundToClientSecret exercises the production
+// NewAuthenticatedClient path (not TokenPersistence directly) to prove the
+// supplied client secret is threaded into the disk-cache key. It also covers the
+// legacy/foreign-cache recovery path: a cache the client cannot decrypt is
+// discarded and a fresh token is fetched. Fails if the constructor stops passing
+// the real client secret (e.g. an empty or constant value), which would let a
+// different secret decrypt the prior cache.
+func TestAuthenticatedClient_CacheKeyBoundToClientSecret(t *testing.T) {
+	// os.UserHomeDir reads HOME on Unix and USERPROFILE on Windows.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	const (
+		customerID = "cust-persist"
+		clientID   = "client-persist"
+		secretA    = "secret-A"
+		secretB    = "secret-B"
+	)
+
+	// newClient builds a cache-enabled authenticated client whose OAuth transport
+	// returns the given token and increments calls on every token request.
+	newClient := func(secret, token string, calls *int32) *AuthenticatedClient {
+		c := NewAuthenticatedClient("https://auth.example.com", customerID, clientID, secret, true)
+		c.AuthClient.HTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			atomic.AddInt32(calls, 1)
+			body := `{"token_type":"bearer","access_token":"` + token + `","expires_in":"3600"}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+			}, nil
+		})}
+		return c
+	}
+
+	// Cold cache: one OAuth call, token persisted to disk.
+	var callsCold int32
+	if tok, err := newClient(secretA, "token-A", &callsCold).GetToken(context.Background()); err != nil || tok != "token-A" {
+		t.Fatalf("cold GetToken = (%q, %v), want (\"token-A\", nil)", tok, err)
+	}
+	if callsCold != 1 {
+		t.Fatalf("expected 1 OAuth call on cold cache, got %d", callsCold)
+	}
+
+	// Fresh client, same IDs + same secret: disk cache hit, no OAuth.
+	var callsReuse int32
+	if tok, err := newClient(secretA, "token-A2", &callsReuse).GetToken(context.Background()); err != nil || tok != "token-A" {
+		t.Fatalf("reuse GetToken = (%q, %v), want reused (\"token-A\", nil)", tok, err)
+	}
+	if callsReuse != 0 {
+		t.Fatalf("expected 0 OAuth calls on disk cache hit, got %d", callsReuse)
+	}
+
+	// Fresh client, same IDs but different secret: prior cache must not decrypt,
+	// so OAuth is attempted with the new credentials.
+	var callsDiff int32
+	if tok, err := newClient(secretB, "token-B", &callsDiff).GetToken(context.Background()); err != nil || tok != "token-B" {
+		t.Fatalf("different-secret GetToken = (%q, %v), want fresh (\"token-B\", nil)", tok, err)
+	}
+	if callsDiff != 1 {
+		t.Fatalf("expected 1 OAuth call when secret differs (cache not reused), got %d", callsDiff)
+	}
+}

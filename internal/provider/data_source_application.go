@@ -103,12 +103,12 @@ var ApplicationAttributes = map[string]schema.Attribute{
 		Computed:            true,
 	},
 	"using_template": schema.BoolAttribute{
-		MarkdownDescription: "Using template",
+		MarkdownDescription: "Whether the application was provisioned from a built-in SPA catalog template (backend); unrelated to the provider's `templates/` directory.",
 		Optional:            true,
 		Computed:            true,
 	},
 	"template_name": schema.StringAttribute{
-		MarkdownDescription: "Template name",
+		MarkdownDescription: "Name of the built-in catalog template (backend) from which the application was provisioned.",
 		Optional:            true,
 		Computed:            true,
 	},
@@ -311,12 +311,12 @@ var ApplicationListAttributes = map[string]schema.Attribute{
 		Computed:            true,
 	},
 	"using_template": schema.BoolAttribute{
-		MarkdownDescription: "Using template",
+		MarkdownDescription: "Whether the application was provisioned from a built-in SPA catalog template (backend); unrelated to the provider's `templates/` directory.",
 		Optional:            true,
 		Computed:            true,
 	},
 	"template_name": schema.StringAttribute{
-		MarkdownDescription: "Template name",
+		MarkdownDescription: "Name of the built-in catalog template (backend) from which the application was provisioned.",
 		Optional:            true,
 		Computed:            true,
 	},

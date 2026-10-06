@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -103,6 +105,7 @@ type SPAClient interface {
 	// Application management methods
 	GetApplications(ctx context.Context, offset, limit int, name, appType string) (*ApplicationsResponse, error)
 	GetApplication(ctx context.Context, id string) (*Application, error)
+	GetApplicationAwaitSSO(ctx context.Context, id string) (*Application, error)
 	CreateApplication(ctx context.Context, app *Application) (*Application, error)
 	UpdateApplication(ctx context.Context, id string, app *Application) error
 	DeleteApplication(ctx context.Context, id string) error
@@ -245,6 +248,177 @@ type redirectErrorResponse struct {
 	} `json:"parameters"`
 }
 
+// sensitiveKeyExact holds the exact JSON keys whose values are redacted. These are the wire field
+// names of the only secret-bearing fields in the SPA API request bodies: the PKCS#12 blob
+// (`certificate`) and its password (`certificatePassword`). The API never echoes these back, so
+// response bodies do not carry them.
+//
+// The API bodies are fully typed, so the secret surface is closed and enumerable. Matching is an
+// exact, case-sensitive comparison against these two keys — no case-folding or separator
+// normalization. That means non-secret keys that merely resemble them (certificateId,
+// certificateName, tagKey, keywords) are never over-redacted, while a certificate/certificatePassword
+// nested inside a free-form map[string]any field (customProperties, customerDomainFields, sso, data,
+// and access-policy rule / session-policy condition metadata) is still redacted when it uses one of
+// these exact keys. When a new secret field is added to the schema, add its wire key here.
+var sensitiveKeyExact = []string{"certificate", "certificatePassword"}
+
+// isSensitiveKey reports whether a JSON key's value must be redacted: an exact match against the
+// enumerated secret keys in sensitiveKeyExact.
+func isSensitiveKey(k string) bool {
+	for _, e := range sensitiveKeyExact {
+		if k == e {
+			return true
+		}
+	}
+	return false
+}
+
+// unparseableBodyMarker replaces a request body that cannot be parsed as JSON. A
+// regex-based scrub cannot reliably delimit a value in malformed/non-JSON content (escaped
+// quotes, embedded spaces, truncation all defeat it and leak partial secrets), so an
+// unparseable body is withheld in full rather than emitted with best-effort redaction.
+const unparseableBodyMarker = "[REDACTED: body was not valid JSON and was withheld to avoid leaking secrets]"
+
+// tfLogEnvVars lists the environment variables that gate whether Terraform surfaces this
+// provider's debug logs, ordered most specific first. TF_LOG_PROVIDER_CITRIXSPA is the exact
+// variable terraform-plugin-go wires to this provider's root logger (TF_LOG_PROVIDER + "_" +
+// provider type "citrixspa"); TF_LOG_PROVIDER then TF_LOG are Terraform's broader controls. The
+// first one set decides the level; TF_ACC_LOG_PATH can still override a broad-variable
+// (TF_LOG / TF_LOG_PROVIDER) disable (see below).
+var tfLogEnvVars = []string{"TF_LOG_PROVIDER_CITRIXSPA", "TF_LOG_PROVIDER", "TF_LOG"}
+
+// debugLoggingEnabled reports whether the provider's debug logs will actually be surfaced by
+// Terraform, so hot-path callers can skip redactSensitiveFields (a full JSON parse + tree walk +
+// re-encode) when they would not be — the production default. tflog.Debug's arguments are evaluated
+// eagerly, so without this gate redaction would run on every request even when the line is discarded.
+//
+// The provider's own logger level is not a usable signal: in the real runtime there is no sink, so
+// NewRootProviderLogger defaults an unset level to hclog.Trace and tflog.Debug always writes —
+// Terraform core discards it when TF_LOG* is unset. helper/logging.IsDebugOrHigher is not the
+// reference either (it reads only TF_LOG, not the provider-scoped vars), so we mirror core's TF_LOG*
+// precedence directly.
+//
+// Level semantics follow tfsdklog/sink.go (terraform-plugin-log v0.10.0), the sink that governs
+// tflog.Debug output: DEBUG/TRACE (case-insensitive) and JSON enable it; INFO/WARN/ERROR/OFF
+// disable it, as does any unrecognized value — tfsdklog warns it will default such a value to OFF
+// but actually leaves logLevel at NoLevel, which hclog coerces to its DefaultLevel (INFO), so DEBUG
+// is still dropped. We mirror that: only DEBUG/TRACE/JSON enable the body.
+func debugLoggingEnabled() bool {
+	for _, name := range tfLogEnvVars {
+		level := strings.ToUpper(strings.TrimSpace(os.Getenv(name)))
+		if level == "" {
+			continue
+		}
+		switch level {
+		case "DEBUG", "TRACE", "JSON":
+			// DEBUG/TRACE enable debug output; JSON is trace-level JSON output. Debug on.
+			return true
+		default:
+			// INFO/WARN/ERROR/OFF, or an unrecognized value (which tfsdklog warns it sets to OFF but
+			// actually leaves at hclog's default, INFO — see above): DEBUG is dropped, so debug is
+			// off. One exception: an acc-log path forces the sink to TRACE. In acc-test mode the
+			// in-process sink reads only TF_LOG + TF_ACC_LOG_PATH, and the provider logger's level
+			// comes solely from TF_LOG_PROVIDER_CITRIXSPA; bare TF_LOG and TF_LOG_PROVIDER are read by
+			// nothing in-process, so neither can suppress the line and the body must still be written.
+			// The override therefore excludes only TF_LOG_PROVIDER_CITRIXSPA: an explicit disable there
+			// lowers the provider logger itself, dropping the line at the source where the acc path
+			// cannot rescue it.
+			if name != "TF_LOG_PROVIDER_CITRIXSPA" && accLogPathSet() {
+				return true
+			}
+			return false
+		}
+	}
+	// No explicit TF_LOG* level: the acc-test log-path alone pins the sink to TRACE.
+	return accLogPathSet()
+}
+
+// accLogPathSet reports whether TF_ACC_LOG_PATH is set. tfsdklog hardcodes the sink to TRACE when it
+// is, regardless of TF_LOG, so the provider's debug lines — and their (redacted) bodies — reach the
+// acc-test log file. TF_LOG_PATH_MASK is deliberately not treated as a debug signal: its tfsdklog
+// branch only renames the file and never raises the level, so honoring it would run redaction to
+// produce a line the (off) sink discards.
+func accLogPathSet() bool {
+	return strings.TrimSpace(os.Getenv("TF_ACC_LOG_PATH")) != ""
+}
+
+// redactSensitiveFields redacts sensitive HTTP request body content before it is written to the
+// provider's debug log (it is only applied on the request path, the sole place these secrets
+// travel). A key's value is redacted when isSensitiveKey reports it sensitive: an exact match
+// against the schema's known secret keys (certificate, certificatePassword). Any body that fails
+// JSON parsing is replaced wholesale with unparseableBodyMarker so redaction fails closed rather
+// than emitting the body verbatim.
+func redactSensitiveFields(bodyContent string) string {
+	// Empty or whitespace-only body returns as-is
+	if strings.TrimSpace(bodyContent) == "" {
+		return bodyContent
+	}
+
+	// Attempt to parse as JSON. UseNumber keeps numeric values in their exact textual
+	// form, so large integer IDs/counters and epoch timestamps are preserved verbatim
+	// instead of being rounded through float64 or rewritten in scientific notation in
+	// the logged request body.
+	dec := json.NewDecoder(strings.NewReader(bodyContent))
+	dec.UseNumber()
+	var data any
+	if err := dec.Decode(&data); err != nil {
+		// Not JSON or malformed → fail closed. A regex scrub cannot safely delimit values in
+		// malformed content (escaped quotes / spaces / truncation leak partial secrets), so
+		// withhold the whole request body from the debug log.
+		return unparseableBodyMarker
+	}
+	// Enforce single-value strictness: json.Decoder (unlike json.Unmarshal) accepts trailing
+	// content, and dec.More() misses a trailing '}'/']' (it returns false on those bytes).
+	// Requiring a second Decode to return io.EOF fails closed on ANY trailing token (syntax
+	// error or a second value → not io.EOF; only a clean end-of-input yields io.EOF).
+	var discard any
+	if err := dec.Decode(&discard); err != io.EOF {
+		return unparseableBodyMarker
+	}
+
+	// Redact sensitive fields in place. redactSensitiveFields owns `data` exclusively (it was just
+	// decoded from a fresh reader), so redactValue mutates the decoded tree directly instead of
+	// allocating a second parallel copy.
+	redactedData := redactValue(data)
+
+	// Re-marshal with SetEscapeHTML(false) so '&', '<' and '>' in URLs/messages survive verbatim
+	// instead of becoming six-character unicode escapes (json.Marshal escapes them by default).
+	// Note: this sorts keys alphabetically and normalizes whitespace.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(redactedData); err != nil {
+		// If re-marshaling fails (unlikely), fail closed: withhold the body rather than
+		// returning the original, which could put the unredacted secrets back into the debug log.
+		return unparseableBodyMarker
+	}
+
+	// json.Encoder.Encode appends a trailing newline; drop it so output matches json.Marshal.
+	return strings.TrimSuffix(buf.String(), "\n")
+}
+
+// redactValue replaces sensitive-key values in place; the caller must own the decoded tree.
+func redactValue(obj any) any {
+	switch v := obj.(type) {
+	case map[string]any:
+		for k, val := range v {
+			if isSensitiveKey(k) {
+				v[k] = "[REDACTED]"
+			} else {
+				v[k] = redactValue(val)
+			}
+		}
+		return v
+	case []any:
+		for i, item := range v {
+			v[i] = redactValue(item)
+		}
+		return v
+	default:
+		return v
+	}
+}
+
 // makeRequest performs an HTTP request with proper headers and error handling
 func (c *APIClient) makeRequest(ctx context.Context, method, path string, body any) (*http.Response, error) {
 	// Acquire semaphore slot for mutating operations only (POST, PUT, DELETE).
@@ -315,14 +489,19 @@ func (c *APIClient) makeRequest(ctx context.Context, method, path string, body a
 	transactionID := uuid.New().String()
 	req.Header.Set("Citrix-TransactionId", transactionID)
 
-	// Log the request for debugging
-	tflog.Debug(ctx, "spa-terraform-provider: SPA API request", map[string]any{
+	// Log the request for debugging. The request body only feeds this debug log, so skip the
+	// cost of redactSensitiveFields entirely unless the log will actually be surfaced — the
+	// argument would otherwise be evaluated eagerly on every request even in production.
+	requestFields := map[string]any{
 		"method":         method,
 		"url":            fullURL,
 		"transaction_id": transactionID,
-		"body":           bodyContent,
 		// "headers":        req.Header,
-	})
+	}
+	if debugLoggingEnabled() {
+		requestFields["body"] = redactSensitiveFields(bodyContent)
+	}
+	tflog.Debug(ctx, "spa-terraform-provider: SPA API request", requestFields)
 
 	const maxRetries = 3
 	var rateLimitHitsThisRequest int64
@@ -554,6 +733,53 @@ func (c *APIClient) makeRequest(ctx context.Context, method, path string, body a
 	return nil, fmt.Errorf("unexpected state in rate limit retry loop (transaction ID: %s)", transactionID)
 }
 
+// ErrNotFound is the sentinel every HTTP 404 from the SPA API unwraps to. Use
+// IsNotFound (or errors.Is) to test for it — never match on the error text: the
+// message embeds a random transaction ID and the raw response body, either of
+// which can contain "404" for a response that is not a 404 at all.
+var ErrNotFound = errors.New("resource not found")
+
+// APIError is a non-2xx response from the SPA API. It carries the parsed status
+// code so callers never have to inspect the message text to classify a failure.
+type APIError struct {
+	StatusCode    int
+	TransactionID string
+	Body          string
+}
+
+// Error renders the message verbatim as it has always been rendered, so
+// diagnostics, logs and existing assertions are unaffected by the type change.
+func (e *APIError) Error() string {
+	return fmt.Sprintf("API request failed with status %d (transaction ID: %s): %s", e.StatusCode, e.TransactionID, e.Body)
+}
+
+// Unwrap exposes ErrNotFound for 404s, so errors.Is works on wrapped errors.
+func (e *APIError) Unwrap() error {
+	if e.StatusCode == http.StatusNotFound {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// IsNotFound reports whether err is an HTTP 404 from the SPA API. Transport
+// failures, and non-404 responses whose transaction ID or body happens to
+// contain "404", are correctly reported as false.
+func IsNotFound(err error) bool {
+	return errors.Is(err, ErrNotFound)
+}
+
+// IsInternalServerError reports whether err is an HTTP 500 from the SPA API.
+// Like IsNotFound it classifies on the parsed status code and never on the
+// message text: that text embeds a random transaction ID and a verbatim echo of
+// the caller's own payload, so it can read "status 500" for a response that is
+// not a 500. Only 500 counts — other 5xx statuses come from the gateway rather
+// than the service, and callers here care about partial work the service itself
+// may have done.
+func IsInternalServerError(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusInternalServerError
+}
+
 // handleResponse processes API response and handles common error cases
 func (c *APIClient) handleResponse(ctx context.Context, resp *http.Response, target any) error {
 	defer resp.Body.Close()
@@ -577,7 +803,11 @@ func (c *APIClient) handleResponse(ctx context.Context, resp *http.Response, tar
 	})
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("API request failed with status %d (transaction ID: %s): %s", resp.StatusCode, txid, string(body))
+		return &APIError{
+			StatusCode:    resp.StatusCode,
+			TransactionID: txid,
+			Body:          string(body),
+		}
 	}
 
 	if target != nil && len(body) > 0 && string(body) != "null" {
@@ -640,16 +870,26 @@ type Policy struct {
 
 // Application represents an application in the SPA system (for individual application queries)
 type Application struct {
-	ID                   string         `json:"id,omitempty"`
-	Name                 string         `json:"name"`
-	Type                 string         `json:"type"`
-	Description          string         `json:"description,omitempty"`
-	URL                  string         `json:"url,omitempty"`
-	Category             string         `json:"category,omitempty"`
-	Hidden               bool           `json:"hidden,omitempty"`
-	AgentlessAccess      bool           `json:"agentlessAccess,omitempty"`
-	MobileSecurity       bool           `json:"mobileSecurity,omitempty"`
-	SbsOnlyLaunch        bool           `json:"sbsOnlyLaunch,omitempty"`
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+	// description and category enforce a backend minimum length and reject ""
+	// ("is too short"); the backend also retains the prior value when the field is
+	// omitted or null, so it cannot be cleared once set. An empty value is omitted
+	// rather than sent; the schema uses UseStateForUnknown so an omitted value keeps
+	// the prior one instead of drifting.
+	Description string `json:"description,omitempty"`
+	// url is required by the backend and always carries a non-empty value, so it is
+	// sent unconditionally.
+	URL      string `json:"url"`
+	Category string `json:"category,omitempty"`
+	// Boolean fields must NOT use omitempty: a false value is the Go zero value
+	// and omitempty would drop it from the request body, leaving the backend's
+	// previous value unchanged and causing "inconsistent result after apply".
+	Hidden               bool           `json:"hidden"`
+	AgentlessAccess      bool           `json:"agentlessAccess"`
+	MobileSecurity       bool           `json:"mobileSecurity"`
+	SbsOnlyLaunch        bool           `json:"sbsOnlyLaunch"`
 	UsingTemplate        bool           `json:"usingTemplate"`
 	TemplateName         string         `json:"templateName,omitempty"`
 	Icon                 string         `json:"icon,omitempty"`
@@ -908,6 +1148,43 @@ func (c *APIClient) GetApplication(ctx context.Context, id string) (*Application
 	return &result, nil
 }
 
+// ssoReadbackRetries and ssoReadbackBackoff bound the re-fetch performed by
+// GetApplicationAwaitSSO. They are package vars so tests can shorten the wait.
+var (
+	ssoReadbackRetries = 3
+	ssoReadbackBackoff = 300 * time.Millisecond
+)
+
+// GetApplicationAwaitSSO fetches an application and, when the response omits the
+// SSO object, re-fetches a bounded number of times until it appears. The GET
+// that immediately follows a create/update — and the GET issued by
+// `terraform import`, which reads in that same window — can transiently omit the
+// SSO object due to backend eventual consistency; without this, Read/Import
+// would record a configured SSO as null. Applications that genuinely have no SSO
+// exhaust the small budget and return unchanged with an empty SSO.
+func (c *APIClient) GetApplicationAwaitSSO(ctx context.Context, id string) (*Application, error) {
+	app, err := c.GetApplication(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for attempt := 0; len(app.SSO) == 0 && attempt < ssoReadbackRetries; attempt++ {
+		select {
+		case <-time.After(ssoReadbackBackoff):
+		case <-ctx.Done():
+			return app, ctx.Err()
+		}
+		refetched, rerr := c.GetApplication(ctx, id)
+		if rerr != nil {
+			// Propagate the error: inside this loop app.SSO is always empty, so
+			// returning it as success would persist sso=null and defeat the guard.
+			// Failing lets Read preserve prior state and retry.
+			return nil, rerr
+		}
+		app = refetched
+	}
+	return app, nil
+}
+
 // CreateApplication creates a new application
 func (c *APIClient) CreateApplication(ctx context.Context, app *Application) (*Application, error) {
 	tflog.Debug(ctx, "spa-terraform-provider: APIClient.CreateApplication calling API", map[string]any{
@@ -996,11 +1273,14 @@ func (c *APIClient) DeleteApplication(ctx context.Context, id string) error {
 
 // AccessPolicy represents an access policy
 type AccessPolicy struct {
-	ID          string       `json:"id,omitempty"`
-	Name        string       `json:"name"`
-	Description string       `json:"description,omitempty"`
-	Active      bool         `json:"active"` // Required field for create/update
-	Priority    int          `json:"priority"`
+	ID          string `json:"id,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Active      bool   `json:"active"` // Required field for create/update
+	// Priority is a pointer with omitempty so an omitted priority is absent from
+	// the request body and the backend assigns one; an explicit value (including
+	// 0) is sent verbatim.
+	Priority    *int         `json:"priority,omitempty"`
 	Modified    string       `json:"modified,omitempty"`
 	Apps        []string     `json:"apps,omitempty"`
 	AccessRules []AccessRule `json:"accessRules,omitempty"`
@@ -1010,7 +1290,7 @@ type AccessPolicy struct {
 type AccessRule struct {
 	ID               string            `json:"id,omitempty"`
 	Name             string            `json:"name,omitempty"`
-	Description      string            `json:"description,omitempty"`
+	Description      string            `json:"description"` // No omitempty - schema defaults to "" and must be sent to clear
 	Priority         int               `json:"priority"`
 	Active           bool              `json:"active"`                 // Required field - no omitempty
 	Access           string            `json:"access,omitempty"`       // ACCESS_DENY, ACCESS_ALLOW
@@ -1033,15 +1313,20 @@ type DomainOverride struct {
 	Type        string   `json:"type"`
 }
 
-// Condition represents a condition for access rules
+// Condition represents a condition for access rules.
+//
+// User and group scope belongs in a Rule with Type "TYPE_USERGROUP". The
+// service's retired conditions[].userAndGroups field is neither sent nor
+// decoded; encoding/json ignores it in responses.
 type Condition struct {
-	PlatformFilter string                 `json:"platformFilter,omitempty"` // PLATFORM_FILTER_MOBILE, PLATFORM_FILTER_PC, PLATFORM_FILTER_ANY
-	UserAndGroups  map[string]interface{} `json:"userAndGroups,omitempty"`
+	PlatformFilter string `json:"platformFilter,omitempty"` // PLATFORM_FILTER_MOBILE, PLATFORM_FILTER_PC, PLATFORM_FILTER_ANY
 }
 
 // Restrictions represents access rule restrictions
 type Restrictions struct {
-	RedirectSBS              bool                   `json:"redirectSBS,omitempty"`
+	// No omitempty: false is the Go zero value and would be dropped, leaving the
+	// backend's previous value and causing "inconsistent result after apply".
+	RedirectSBS              bool                   `json:"redirectSBS"`
 	EnhancedSecuritySettings map[string]interface{} `json:"enhancedSecuritySettings,omitempty"`
 }
 
@@ -1232,12 +1517,7 @@ func (c *APIClient) CreateAccessPolicy(ctx context.Context, policy *AccessPolicy
 		"policy": policy.Name,
 	})
 
-	// Debug: marshal policy to JSON to see what's being sent
-	policyJSON, _ := json.MarshalIndent(policy, "", "  ")
-	tflog.Debug(ctx, "spa-terraform-provider: APIClient.CreateAccessPolicy payload", map[string]any{
-		"json": string(policyJSON),
-	})
-
+	// Body is logged (redacted) by makeRequest; don't add a raw payload dump here.
 	resp, err := c.makeRequest(ctx, "POST", "/accessPolicy", policy)
 	if err != nil {
 		return nil, err
@@ -2154,11 +2434,7 @@ func (c *APIClient) CreateSessionPolicy(ctx context.Context, policy *SessionPoli
 		"policy": policy.Name,
 	})
 
-	policyJSON, _ := json.MarshalIndent(policy, "", "  ")
-	tflog.Debug(ctx, "spa-terraform-provider: APIClient.CreateSessionPolicy payload", map[string]any{
-		"json": string(policyJSON),
-	})
-
+	// Body is logged (redacted) by makeRequest; don't add a raw payload dump here.
 	resp, err := c.makeRequest(ctx, "POST", "/sessionPolicy", policy)
 	if err != nil {
 		return nil, err

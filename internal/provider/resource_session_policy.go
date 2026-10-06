@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -278,7 +277,7 @@ func (r *SessionPolicyResource) Read(ctx context.Context, req resource.ReadReque
 
 	policy, err := r.client.GetSessionPolicy(ctx, data.ID.ValueString())
 	if err != nil {
-		if strings.Contains(err.Error(), "404") {
+		if IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
 			return
 		}

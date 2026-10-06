@@ -37,6 +37,7 @@ KEYS = {
     "routing_domain": "fqdn",
     "access_policy": "name",
     "security_group": "name",
+    "session_policy": "name",
 }
 
 # Tenant-specific / computed keys dropped at ANY nesting depth before comparing.
@@ -48,6 +49,9 @@ KEYS = {
 #   icon_url      -> per-tenant computed icon URL
 #   state / policy_count / error -> computed / server-side
 #   location_ids  -> per-tenant routing-location UUIDs
+#   saml_sso_login_url / saml_cert_issuer_name -> server-computed SSO fields that
+#                    embed the tenant's customer id and per-tenant APPID, so they
+#                    legitimately differ between tenants (nested under sso).
 SCRUB_KEYS = {
     "id",
     "customer",
@@ -58,6 +62,8 @@ SCRUB_KEYS = {
     "policy_count",
     "error",
     "location_ids",
+    "saml_sso_login_url",
+    "saml_cert_issuer_name",
 }
 
 # Resource suffix -> fields holding application IDs, remapped to app names.

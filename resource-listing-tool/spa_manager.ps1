@@ -14,6 +14,7 @@
     ./spa_manager.ps1 -List                     # Discover and list resources (with detailed individual queries)
     ./spa_manager.ps1 -List -Quick              # Discover and list resources (quick mode, list data only)
     ./spa_manager.ps1 -List -Id 'id1' -Id 'id2' # Discover and list resources (with specific IDs)
+    ./spa_manager.ps1 -List -ExtractLocals      # Discover and hoist shared users / resource locations into a locals block
     ./spa_manager.ps1 -Plan                     # Run Terraform plan
     ./spa_manager.ps1 -Apply                    # Run terraform apply after plan
     ./spa_manager.ps1 -Update                   # Show terraform plan update
@@ -104,6 +105,11 @@ param(
     [Alias('i')]
     [string[]]$Id = @(),
 
+    # Not a parameter set member on purpose: it composes with -List.
+    [Parameter()]
+    [Alias('el')]
+    [switch]$ExtractLocals,
+
     [Parameter()]
     [switch]$VerboseOutput,
 
@@ -130,7 +136,7 @@ terraform {{
   required_providers {{
     citrixspa = {{
       source  = "registry.terraform.io/citrix/citrixspa"
-      version = "1.1.0"
+      version = "1.2.0"
     }}
   }}
 }}
@@ -2040,22 +2046,603 @@ function Get-SafeTerraformName {
     return $safe
 }
 
+# =============================================================================
+# SHARED VALUE EXTRACTION  (-ExtractLocals)
+# =============================================================================
+#
+# !! KEEP IN SYNC WITH THE EMITTERS !!
+#
+# The tool emits every resource TWICE:
+#   1. the default literal path (catalogue is $null), and
+#   2. the -ExtractLocals path, which hoists repeated values into a `locals`
+#      block and emits `local.*` references instead.
+#
+# Build-SharedValueCatalog below COLLECTS the values; these five call sites
+# REFERENCE them. Both halves must be updated together:
+#
+#   New-ApplicationResource      locations[]                    -> resource_locations
+#   New-AccessRuleBlock          advanced_settings
+#                                  .domain_overrides[]
+#                                  .location_ids[]              -> resource_locations
+#   New-AccessRuleBlock          rules[] (TYPE_USERGROUP)       -> users / user_metadata
+#   New-RoutingDomainResource    location_ids[]                 -> resource_locations
+#   New-SessionPolicyRuleBlock   condition[] (TYPE_USERGROUP)   -> users / user_metadata
+#
+# Adding a field that carries a resource-location UUID or a user/group directory
+# token, without extending BOTH halves, fails QUIETLY: the -ExtractLocals output
+# simply keeps the literal, which is still valid HCL and still plans clean. The
+# collapse-count assertions in e2e/tooling/run-spa-manager-roundtrip.sh exist to
+# catch exactly that.
+#
+# Everything here is built to be plan-neutral: when a construct cannot be
+# reproduced byte-for-byte from the catalogue, the resolver returns $null and the
+# caller falls back to the literal emission.
+# =============================================================================
+
+function Get-SharedPropValue {
+    <#
+    .SYNOPSIS
+        Property accessor for the shared-value catalogue
+
+    .DESCRIPTION
+        Script-scoped twin of the Get-PropValue helper that each emitter defines
+        locally. Declared once here because the catalogue walks every resource
+        type and cannot rely on any single emitter's nested copy.
+    #>
+    param([object]$Obj, [string]$PropName, [object]$Default = $null)
+
+    if ($Obj -is [PSCustomObject]) {
+        $val = $Obj.$PropName
+        if ($null -ne $val) { return $val }
+    }
+    elseif ($Obj -is [hashtable]) {
+        if ($Obj.ContainsKey($PropName)) { return $Obj[$PropName] }
+    }
+    return $Default
+}
+
+function New-OrdinalOrderedDictionary {
+    <#
+    .SYNOPSIS
+        An insertion-ordered, case-SENSITIVE dictionary
+
+    .DESCRIPTION
+        `[ordered]@{}` is case-insensitive, so two keys differing only in case
+        collapse into one. Directory display names and tokens are case-bearing
+        data we must round-trip exactly, so the shared-value catalogue and every
+        map derived from API data use an Ordinal comparer instead.
+    #>
+    return [System.Collections.Specialized.OrderedDictionary]::new([System.StringComparer]::Ordinal)
+}
+
+function ConvertTo-PropertyMap {
+    <#
+    .SYNOPSIS
+        Normalise a PSCustomObject / hashtable into an ordered name->value map
+
+    .DESCRIPTION
+        Preserves declaration order so generated locals keys are stable across
+        runs — the golden-file test compares output byte-for-byte.
+    #>
+    param([object]$Obj)
+
+    # Ordinal: a plain [ordered]@{} is case-insensitive, which would silently
+    # merge display names that differ only in case ("Sales Team" / "SALES TEAM")
+    # into one entry and emit the wrong one.
+    $map = New-OrdinalOrderedDictionary
+    if ($null -eq $Obj) { return $map }
+
+    if ($Obj -is [PSCustomObject]) {
+        foreach ($prop in $Obj.PSObject.Properties) { $map[$prop.Name] = $prop.Value }
+    }
+    elseif ($Obj -is [System.Collections.IDictionary]) {
+        foreach ($k in @($Obj.Keys)) { $map[[string]$k] = $Obj[$k] }
+    }
+    return $map
+}
+
+# HCL identifiers that cannot be used bare as an object-constructor key or as an
+# attribute name in a `local.<map>.<key>` traversal.
+$script:HclReservedWords = @('for', 'if', 'in', 'else', 'endfor', 'endif', 'true', 'false', 'null')
+
+function Get-SharedLocalName {
+    <#
+    .SYNOPSIS
+        Convert a display name into a safe, unique `locals` map key
+
+    .DESCRIPTION
+        Same sanitisation as Get-SafeTerraformName but tracked in
+        $script:UsedLocalNames, so locals keys and resource names occupy
+        separate namespaces.
+
+        Also prefixes HCL keywords: a key literally named `for` turns an object
+        constructor into a for-expression, so `{ for = { ... } }` is a parse
+        error rather than a map with one entry.
+    #>
+    param(
+        [string]$Name,
+        [string]$Prefix = 'item'
+    )
+
+    $safe = $Name -replace '\*', 'wildcard'
+    $safe = $safe -replace '[^a-zA-Z0-9_]', '_'
+    $safe = $safe -replace '_+', '_'
+    $safe = $safe.Trim('_')
+
+    if ([string]::IsNullOrEmpty($safe)) { $safe = $Prefix }
+    if ($safe[0] -match '\d') { $safe = "${Prefix}_$safe" }
+    # Case-sensitive: HCL keywords are lowercase, so `For` is a legal key.
+    if ($script:HclReservedWords -ccontains $safe) { $safe = "${Prefix}_$safe" }
+
+    $originalSafe = $safe
+    $counter = 1
+    while ($script:UsedLocalNames.ContainsKey($safe)) {
+        $safe = "${originalSafe}_$counter"
+        $counter++
+    }
+
+    $script:UsedLocalNames[$safe] = $true
+    return $safe
+}
+
+function Get-UserGroupRuleEntries {
+    <#
+    .SYNOPSIS
+        Yield every TYPE_USERGROUP entry across access and session policies
+
+    .DESCRIPTION
+        Access policies carry them in access_rules[].rules[]; session policies in
+        rule[].condition[]. Both shapes expose the same values[]/metadata pair, so
+        the catalogue and the resolver treat them identically.
+    #>
+
+    $entries = @()
+
+    $apData = Get-ResourceData 'access_policies'
+    if ($apData -and $apData.ContainsKey('access_policies')) {
+        foreach ($policy in $apData['access_policies']) {
+            foreach ($accessRule in @(Get-SharedPropValue $policy 'access_rules' @())) {
+                foreach ($r in @(Get-SharedPropValue $accessRule 'rules' @())) {
+                    if ((Get-SharedPropValue $r 'type' '') -eq 'TYPE_USERGROUP') { $entries += $r }
+                }
+            }
+        }
+    }
+
+    $spData = Get-ResourceData 'session_policies'
+    if ($spData -and $spData.ContainsKey('session_policies')) {
+        foreach ($policy in $spData['session_policies']) {
+            # 'generic_rules' is what the session-policy data source emits and what
+            # New-SessionPolicyResource reads; keep the two in step.
+            foreach ($rule in @(Get-SharedPropValue $policy 'generic_rules' @())) {
+                foreach ($c in @(Get-SharedPropValue $rule 'condition' @())) {
+                    if ((Get-SharedPropValue $c 'type' '') -eq 'TYPE_USERGROUP') { $entries += $c }
+                }
+            }
+        }
+    }
+
+    return $entries
+}
+
+function Register-SharedIdentity {
+    <#
+    .SYNOPSIS
+        Add one (display name, comma-joined tokens) pair to the catalogue
+
+    .DESCRIPTION
+        Applies the key derivation and the round-trip guard in one place, so a
+        pair the tool cannot reproduce exactly is silently skipped rather than
+        catalogued and later emitted wrong.
+    #>
+    param(
+        [hashtable]$Catalog,
+        [string]$Name,
+        [string]$Joined
+    )
+
+    if ([string]::IsNullOrEmpty($Joined)) { return }
+    $identityKey = "$Name`0$Joined"
+    if ($Catalog.Identities.Contains($identityKey)) { return }
+
+    $tokens = @($Joined -split ',')
+    # join(",", tokens) must reproduce the original string exactly, otherwise the
+    # derived user_metadata local would not match what the API returned.
+    if (($tokens -join ',') -cne $Joined) { return }
+    # An empty token (leading, trailing or doubled comma) is not extractable: the
+    # literal session-policy path drops falsy items from values[], so a collapsed
+    # `local.users.<k>.tokens` would carry one element the literal path does not
+    # and the two emission modes would plan differently.
+    foreach ($token in $tokens) {
+        if ([string]::IsNullOrEmpty($token)) { return }
+    }
+
+    $Catalog.Identities[$identityKey] = @{
+        Key    = Get-SharedLocalName -Name $Name -Prefix 'user'
+        Name   = $Name
+        Tokens = $tokens
+    }
+}
+
+function Build-SharedLocationCatalog {
+    <#
+    .SYNOPSIS
+        The resource-location half of the -ExtractLocals catalogue
+
+    .DESCRIPTION
+        Returns an ordered dictionary, uuid -> @{ Key; Name; Uuid }.
+
+        Keys are case-insensitive: a UUID is case-insensitive by spec, so the
+        same location reported as ...ABC and ...abc must share one entry.
+
+        Ordered, so Keys enumerates in discovery order and key assignment is
+        reproducible run-to-run (the golden-file test compares bytes).
+
+        Only locations referenced MORE THAN ONCE are catalogued. Hoisting a
+        location used in exactly one place trades a literal for a locals entry
+        plus a reference — two lines of config and one indirection to buy
+        nothing, since there is no second site to keep in sync. It is worst for
+        a location the API only ever reported through a routing domain: that
+        has no name, so the entry reads `loc_<uuid> = { uuid = "<uuid>" }` and
+        the reference is longer than the UUID it replaces.
+    #>
+
+    $locations = [ordered]@{}
+
+    # Applications are the only source carrying both name and uuid, so they seed
+    # the catalogue; routing domains and domain overrides contribute uuid-only
+    # entries afterwards.
+    $locationNames = [ordered]@{}   # uuid -> distinct names seen
+    # uuid -> distinct literal spellings seen. Case-insensitive keys, like
+    # $locationNames, so every spelling of one location gathers under one entry.
+    $locationCasings = [ordered]@{}
+    # uuid -> how many times it was referenced anywhere. Counts REFERENCES, not
+    # distinct sites: the same uuid twice in one application's locations[] is
+    # still two places a later edit would have to touch.
+    $locationRefCounts = [ordered]@{}
+
+    $noteLocation = {
+        param([string]$Uuid, [string]$Name)
+        if ([string]::IsNullOrEmpty($Uuid)) { return }
+        if (-not $locationNames.Contains($Uuid)) { $locationNames[$Uuid] = @() }
+        if (-not $locationCasings.Contains($Uuid)) { $locationCasings[$Uuid] = @() }
+        if (-not $locationRefCounts.Contains($Uuid)) { $locationRefCounts[$Uuid] = 0 }
+        $locationRefCounts[$Uuid]++
+        # -cnotcontains: record every distinct SPELLING. A uuid is case-insensitive
+        # by spec, so the API may report one location as ...ABC here and ...abc
+        # there; Terraform compares the strings, so the two are not interchangeable
+        # in generated config.
+        if ($locationCasings[$Uuid] -cnotcontains $Uuid) {
+            $locationCasings[$Uuid] = @($locationCasings[$Uuid]) + $Uuid
+        }
+        # -cnotcontains: a case-only rename ("DC East" -> "DC EAST") is still a
+        # conflict, and -notcontains would miss it and silently keep whichever
+        # casing was seen first.
+        if (-not [string]::IsNullOrEmpty($Name) -and $locationNames[$Uuid] -cnotcontains $Name) {
+            $locationNames[$Uuid] = @($locationNames[$Uuid]) + $Name
+        }
+    }
+
+    $appsData = Get-ResourceData 'applications'
+    if ($appsData -and $appsData.ContainsKey('applications')) {
+        foreach ($app in $appsData['applications']) {
+            foreach ($location in @(Get-SharedPropValue $app 'locations' @())) {
+                if ($location -is [PSCustomObject] -or $location -is [hashtable]) {
+                    & $noteLocation ([string](Get-SharedPropValue $location 'uuid' '')) ([string](Get-SharedPropValue $location 'name' ''))
+                }
+            }
+        }
+    }
+
+    $rdData = Get-ResourceData 'routing_domains'
+    if ($rdData -and $rdData.ContainsKey('routing_domains')) {
+        foreach ($domain in $rdData['routing_domains']) {
+            foreach ($uuid in @(Get-SharedPropValue $domain 'location_ids' @())) {
+                & $noteLocation ([string]$uuid) ''
+            }
+        }
+    }
+
+    $apDataLoc = Get-ResourceData 'access_policies'
+    if ($apDataLoc -and $apDataLoc.ContainsKey('access_policies')) {
+        foreach ($policy in $apDataLoc['access_policies']) {
+            foreach ($accessRule in @(Get-SharedPropValue $policy 'access_rules' @())) {
+                $advanced = Get-SharedPropValue $accessRule 'advanced_settings'
+                foreach ($override in @(Get-SharedPropValue $advanced 'domain_overrides' @())) {
+                    foreach ($uuid in @(Get-SharedPropValue $override 'location_ids' @())) {
+                        & $noteLocation ([string]$uuid) ''
+                    }
+                }
+            }
+        }
+    }
+
+    foreach ($uuid in @($locationNames.Keys)) {
+        if ($locationRefCounts[$uuid] -lt 2) {
+            # Used once: there is nothing to keep in sync, so the literal is the
+            # smaller and clearer output. No warning — this is the expected
+            # outcome for a one-off location, not a case the tool gave up on.
+            continue
+        }
+        $casings = @($locationCasings[$uuid])
+        if ($casings.Count -gt 1) {
+            # One locals entry can hold only one spelling, and substituting it at
+            # the other site would change that attribute's string — the plan would
+            # show a diff the literal output does not have. Leave them all inline.
+            Write-WarningMessage "Resource location '$uuid' is reported in more than one letter case ($($casings -join ', ')); left inline."
+            continue
+        }
+        $names = @($locationNames[$uuid])
+        if ($names.Count -gt 1) {
+            # The same resource location reported under two different names: we
+            # cannot collapse it without picking one and changing the other, so
+            # leave every reference literal.
+            Write-WarningMessage "Resource location '$uuid' has conflicting names ($($names -join ', ')); left inline."
+            continue
+        }
+        $name = if ($names.Count -eq 1) { $names[0] } else { '' }
+        $key = if ([string]::IsNullOrEmpty($name)) {
+            Get-SharedLocalName -Name "loc_$uuid" -Prefix 'location'
+        }
+        else {
+            Get-SharedLocalName -Name $name -Prefix 'location'
+        }
+        $locations[$uuid] = @{ Key = $key; Name = $name; Uuid = $uuid }
+    }
+
+    return $locations
+}
+
+function Build-SharedValueCatalog {
+    <#
+    .SYNOPSIS
+        Pass 1 of -ExtractLocals: collect every repeatable value into a catalogue
+
+    .DESCRIPTION
+        Walks the in-memory API data ($script:ResourceData) — never generated HCL
+        — and returns:
+
+            @{
+              Locations  = [ordered] uuid -> @{ Key; Name; Uuid }
+              Identities = [ordered] "<name>\0<joined>" -> @{ Key; Name; Tokens }
+            }
+
+        The two halves are collected independently; see
+        Build-SharedLocationCatalog for the location rules.
+    #>
+
+    $catalog = @{
+        Locations  = Build-SharedLocationCatalog
+        # Ordinal, unlike Locations: display names and directory tokens are
+        # case-bearing and must round-trip exactly.
+        Identities = New-OrdinalOrderedDictionary
+    }
+
+    # One catalogue entry per (display name, comma-joined token list) pair, so the
+    # same display name with two different token sets yields two entries.
+    foreach ($entry in Get-UserGroupRuleEntries) {
+        $metadata = ConvertTo-PropertyMap (Get-SharedPropValue $entry 'metadata')
+        foreach ($name in $metadata.Keys) {
+            Register-SharedIdentity -Catalog $catalog -Name $name -Joined ([string]$metadata[$name])
+        }
+    }
+
+    return $catalog
+}
+
+function Resolve-LocationRef {
+    <#
+    .SYNOPSIS
+        Render one resource-location UUID as a locals reference or a literal
+    #>
+    param([string]$Uuid)
+
+    if ($null -ne $script:SharedCatalog -and $script:SharedCatalog.Locations.Contains($Uuid)) {
+        return "local.resource_locations.$($script:SharedCatalog.Locations[$Uuid].Key).uuid"
+    }
+    return "`"$(ConvertTo-EscapedTerraformString $Uuid)`""
+}
+
+function ConvertTo-LocationIdList {
+    <#
+    .SYNOPSIS
+        Render a location_ids list, substituting locals references where possible
+
+    .DESCRIPTION
+        Mirrors ConvertTo-TerraformStringList — same falsy-item skip, same `,`
+        separator, and both escape their items — so a catalogue miss falls back
+        to a literal list byte-identical to the one the default path emits.
+    #>
+    param([object[]]$Uuids)
+
+    if ($null -eq $Uuids) { return 'null' }
+    $items = @()
+    foreach ($uuid in $Uuids) {
+        if ($uuid) { $items += Resolve-LocationRef ([string]$uuid) }
+    }
+    if ($items.Count -eq 0) { return '[]' }
+    return '[' + ($items -join ',') + ']'
+}
+
+function Resolve-UserGroupRuleRefs {
+    <#
+    .SYNOPSIS
+        Render a TYPE_USERGROUP rule's values/metadata as locals references
+
+    .DESCRIPTION
+        Returns @{ Values = '<expr>'; Metadata = '<expr>' }, or $null when the
+        rule cannot be provably reconstructed from the catalogue — in which case
+        the caller emits the original literals.
+
+        Extractable requires ALL of:
+          1. every metadata key resolves to a catalogue entry;
+          2. each entry's tokens appear in values[] contiguously and in order;
+          3. concatenating the entries, ordered by their start index in values[],
+             reproduces values[] exactly (no leftovers, no duplicates).
+
+        (2) and (3) together are what make the rewrite plan-neutral.
+    #>
+    param([object]$Rule)
+
+    if ($null -eq $script:SharedCatalog) { return $null }
+
+    $values = @(Get-SharedPropValue $Rule 'values' @())
+    if ($values.Count -eq 0) { return $null }
+
+    $metadata = ConvertTo-PropertyMap (Get-SharedPropValue $Rule 'metadata')
+    if ($metadata.Count -eq 0) { return $null }
+
+    $placed = @()
+    foreach ($name in $metadata.Keys) {
+        $joined = [string]$metadata[$name]
+        $identityKey = "$name`0$joined"
+        if (-not $script:SharedCatalog.Identities.Contains($identityKey)) { return $null }
+
+        $identity = $script:SharedCatalog.Identities[$identityKey]
+        $tokens = @($identity.Tokens)
+
+        # Locate the tokens as a contiguous, in-order run inside values[].
+        $startIndex = -1
+        for ($i = 0; $i -le ($values.Count - $tokens.Count); $i++) {
+            $match = $true
+            for ($j = 0; $j -lt $tokens.Count; $j++) {
+                if ([string]$values[$i + $j] -cne [string]$tokens[$j]) { $match = $false; break }
+            }
+            if ($match) { $startIndex = $i; break }
+        }
+        if ($startIndex -lt 0) { return $null }
+
+        $placed += @{ Start = $startIndex; Identity = $identity }
+    }
+
+    # -Stable matters when two identities share a Start, which happens when
+    # several display names map to the very same token run. Sort-Object is
+    # otherwise free to reorder ties — .NET's introsort only looks stable below
+    # 17 elements, where it falls back to insertion sort — and that would swap
+    # the concat()/merge() arguments between PowerShell versions for identical
+    # input. Terraform does not care (concat of equal runs and merge of maps are
+    # order-insensitive), but the golden files do.
+    $ordered = @($placed | Sort-Object -Stable { $_.Start })
+
+    # Rebuild values[] from the catalogue and require an exact match. This is the
+    # single check that rules out overlaps, gaps and stray extra values.
+    $rebuilt = @()
+    foreach ($p in $ordered) { $rebuilt += $p.Identity.Tokens }
+    if ($rebuilt.Count -ne $values.Count) { return $null }
+    for ($i = 0; $i -lt $values.Count; $i++) {
+        if ([string]$rebuilt[$i] -cne [string]$values[$i]) { return $null }
+    }
+
+    $tokenRefs = @($ordered | ForEach-Object { "local.users.$($_.Identity.Key).tokens" })
+    $metaRefs = @($ordered | ForEach-Object { "local.user_metadata.$($_.Identity.Key)" })
+
+    if ($tokenRefs.Count -eq 1) {
+        return @{ Values = $tokenRefs[0]; Metadata = $metaRefs[0] }
+    }
+    return @{
+        Values   = 'concat(' + ($tokenRefs -join ', ') + ')'
+        Metadata = 'merge(' + ($metaRefs -join ', ') + ')'
+    }
+}
+
+function New-SharedValuesLocalsBlock {
+    <#
+    .SYNOPSIS
+        Render the `locals` block that the local.* references point at
+
+    .DESCRIPTION
+        Returns an empty array when the catalogue holds nothing, so an
+        -ExtractLocals run against a tenant with no shared values produces the
+        same file as a plain run.
+    #>
+    param([hashtable]$Catalog)
+
+    if ($null -eq $Catalog) { return @() }
+    $hasLocations = $Catalog.Locations.Count -gt 0
+    $hasIdentities = $Catalog.Identities.Count -gt 0
+    if (-not $hasLocations -and -not $hasIdentities) { return @() }
+
+    $lines = @()
+    $lines += '# ============================================================================='
+    $lines += '# SHARED VALUES'
+    $lines += '# Edit a resource location UUID or a user''s tokens here and every reference'
+    $lines += '# below picks it up. Generated by spa_manager.ps1 -List -ExtractLocals.'
+    $lines += '# ============================================================================='
+    $lines += 'locals {'
+
+    if ($hasLocations) {
+        $lines += '  resource_locations = {'
+        foreach ($uuid in $Catalog.Locations.Keys) {
+            $loc = $Catalog.Locations[$uuid]
+            $lines += "    $($loc.Key) = {"
+            if (-not [string]::IsNullOrEmpty($loc.Name)) {
+                $lines += "      name = `"$(ConvertTo-EscapedTerraformString $loc.Name)`""
+            }
+            $lines += "      uuid = `"$(ConvertTo-EscapedTerraformString $loc.Uuid)`""
+            $lines += '    }'
+        }
+        $lines += '  }'
+    }
+
+    if ($hasIdentities) {
+        if ($hasLocations) { $lines += '' }
+        $lines += '  users = {'
+        foreach ($identityKey in $Catalog.Identities.Keys) {
+            $identity = $Catalog.Identities[$identityKey]
+            $lines += "    $($identity.Key) = {"
+            $lines += "      name = `"$(ConvertTo-EscapedTerraformString $identity.Name)`""
+            $lines += '      tokens = ['
+            foreach ($token in $identity.Tokens) {
+                $lines += "        `"$(ConvertTo-EscapedTerraformString $token)`","
+            }
+            $lines += '      ]'
+            $lines += '    }'
+        }
+        $lines += '  }'
+        $lines += ''
+        $lines += '  # Derived: the metadata fragment each TYPE_USERGROUP rule merges in.'
+        $lines += '  # Do not edit — change `users` above instead. Deriving it is what stops'
+        $lines += '  # a rule''s values[] and metadata drifting apart.'
+        $lines += '  user_metadata = { for k, u in local.users : k => { (u.name) = join(",", u.tokens) } }'
+    }
+
+    $lines += '}'
+    $lines += ''
+    return $lines
+}
+
 function ConvertTo-EscapedTerraformString {
     <#
     .SYNOPSIS
         Escape string for terraform configuration
+
+    .DESCRIPTION
+        Everything this escapes is tenant data, so it must survive the round trip
+        as the literal text the API returned.
+
+        `${` and `%{` open a template interpolation and a template directive. An
+        unescaped one is not a syntax error, so terraform fmt accepts the file and
+        the gate in Confirm-GeneratedHclParses stays quiet; terraform then EVALUATES
+        it at plan time. A group called `Sales ${1 + 1} Team` would silently become
+        `Sales 2 Team`, and with -ExtractLocals that string is the user_metadata map
+        KEY, so the wrong key goes to the service. HCL's own escapes for the two
+        sigils are `$${` and `%%{`.
     #>
     param([object]$Value)
-    
+
     if ($null -eq $Value) {
         return ""
     }
-    
+
     $s = [string]$Value
     # Escape backslashes first (before other escapes)
     $s = $s -replace '\\', '\\'
     # Escape quotes
     $s = $s -replace '"', '\"'
+    # Neutralise the template sigils (see .DESCRIPTION). '$$' is a literal '$'
+    # in a -replace substitution, so the replacement text below is '$${' / '%%{'.
+    $s = $s -replace '\$\{', '$$$${'
+    $s = $s -replace '%\{', '%%{'
     # Escape newlines
     $s = $s -replace "`r`n", '\n'
     $s = $s -replace "`n", '\n'
@@ -2077,7 +2664,7 @@ function ConvertTo-TerraformStringList {
     $items = @()
     foreach ($item in $Values) {
         if ($item) {
-            $items += "`"$item`""
+            $items += "`"$(ConvertTo-EscapedTerraformString $item)`""
         }
     }
     
@@ -2101,15 +2688,31 @@ function ConvertTo-HclDict {
         return "null"
     }
     
-    # Convert PSCustomObject to hashtable if needed
-    $hashTable = @{}
+    # Convert PSCustomObject to a dictionary if needed.
+    #
+    # Ordered on purpose: a plain @{} enumerates its keys in an order PowerShell
+    # does not guarantee between runs, so the same tenant could produce a
+    # different key order on every discovery. HCL does not care, but it made
+    # generated files churn in diffs and the golden-file test flaky.
+    # PSCustomObject property order is the API's JSON order; plain hashtables
+    # have no order of their own, so those keys are sorted.
+    #
+    # Ordinal, not [ordered]@{}: the latter is case-INSENSITIVE, so copying a
+    # case-sensitive source into it drops every key that differs from an earlier
+    # one only in case — "Sales Team" and "SALES TEAM" would collapse to one
+    # entry, and the surviving value would be the second one under the first
+    # one's position. That would undo the whole point of the Ordinal branch below.
+    $hashTable = New-OrdinalOrderedDictionary
     if ($Dict -is [PSCustomObject]) {
         $Dict.PSObject.Properties | ForEach-Object {
             $hashTable[$_.Name] = $_.Value
         }
     }
+    elseif ($Dict -is [System.Collections.Specialized.OrderedDictionary]) {
+        foreach ($key in $Dict.Keys) { $hashTable[[string]$key] = $Dict[$key] }
+    }
     elseif ($Dict -is [hashtable]) {
-        $hashTable = $Dict
+        foreach ($key in ($Dict.Keys | Sort-Object)) { $hashTable[[string]$key] = $Dict[$key] }
     }
     else {
         # If it's not a dict, try to escape it as a string
@@ -2180,15 +2783,28 @@ function ConvertTo-HclMap {
         return "null"
     }
     
-    # Convert PSCustomObject to hashtable if needed
-    $hashTable = @{}
+    # Convert PSCustomObject to a dictionary if needed.
+    #
+    # Ordered on purpose: a plain @{} enumerates its keys in an order PowerShell
+    # does not guarantee between runs, so the same tenant could produce a
+    # different key order on every discovery. HCL does not care, but it made
+    # generated files churn in diffs and the golden-file test flaky.
+    # PSCustomObject property order is the API's JSON order; plain hashtables
+    # have no order of their own, so those keys are sorted.
+    #
+    # Ordinal for the same reason as ConvertTo-HclDict: [ordered]@{} is
+    # case-insensitive and would silently merge keys that differ only in case.
+    $hashTable = New-OrdinalOrderedDictionary
     if ($Dict -is [PSCustomObject]) {
         $Dict.PSObject.Properties | ForEach-Object {
             $hashTable[$_.Name] = $_.Value
         }
     }
+    elseif ($Dict -is [System.Collections.Specialized.OrderedDictionary]) {
+        foreach ($key in $Dict.Keys) { $hashTable[[string]$key] = $Dict[$key] }
+    }
     elseif ($Dict -is [hashtable]) {
-        $hashTable = $Dict
+        foreach ($key in ($Dict.Keys | Sort-Object)) { $hashTable[[string]$key] = $Dict[$key] }
     }
     else {
         # If it's not a dict, try to escape it as a string
@@ -2419,9 +3035,29 @@ function New-ApplicationResource {
         $locationBlocks = @()
         foreach ($location in $locationsArray) {
             if ($location -is [PSCustomObject] -or $location -is [hashtable]) {
-                $locName = ConvertTo-EscapedTerraformString (Get-PropValue $location 'name' '')
-                $locUuid = ConvertTo-EscapedTerraformString (Get-PropValue $location 'uuid' '')
-                $locationBlocks += "    {`n      name = `"$locName`"`n      uuid = `"$locUuid`"`n    }"
+                $rawName = [string](Get-PropValue $location 'name' '')
+                $rawUuid = [string](Get-PropValue $location 'uuid' '')
+                # -ExtractLocals: only collapse when the catalogue holds this uuid
+                # AND the name it recorded matches this one, so the emitted block
+                # is byte-identical to the literal it replaces.
+                $cataloged = $null
+                if ($null -ne $script:SharedCatalog -and $script:SharedCatalog.Locations.Contains($rawUuid)) {
+                    $candidate = $script:SharedCatalog.Locations[$rawUuid]
+                    # A nameless catalogue entry emits no `name` in the locals block,
+                    # so referencing `.name` would not resolve — stay literal.
+                    if (-not [string]::IsNullOrEmpty($candidate.Name) -and $candidate.Name -ceq $rawName) {
+                        $cataloged = $candidate
+                    }
+                }
+                if ($null -ne $cataloged) {
+                    $ref = "local.resource_locations.$($cataloged.Key)"
+                    $locationBlocks += "    {`n      name = $ref.name`n      uuid = $ref.uuid`n    }"
+                }
+                else {
+                    $locName = ConvertTo-EscapedTerraformString $rawName
+                    $locUuid = ConvertTo-EscapedTerraformString $rawUuid
+                    $locationBlocks += "    {`n      name = `"$locName`"`n      uuid = `"$locUuid`"`n    }"
+                }
             }
             else {
                 $locStr = ConvertTo-EscapedTerraformString $location
@@ -2649,12 +3285,12 @@ function New-AccessRuleBlock {
     
     $access = Get-PropValue $Rule 'access' ''
     if ($access) {
-        $ruleAttrs += "      access = `"$access`""
+        $ruleAttrs += "      access = `"$(ConvertTo-EscapedTerraformString $access)`""
     }
     
     $accessNative = Get-PropValue $Rule 'access_native' ''
     if ($accessNative) {
-        $ruleAttrs += "      access_native = `"$accessNative`""
+        $ruleAttrs += "      access_native = `"$(ConvertTo-EscapedTerraformString $accessNative)`""
     }
     
     # Optional fields
@@ -2665,7 +3301,7 @@ function New-AccessRuleBlock {
     
     $accessNativeCamel = Get-PropValue $Rule 'accessNative'
     if ($accessNativeCamel) {
-        $ruleAttrs += "      access_native = `"$accessNativeCamel`""
+        $ruleAttrs += "      access_native = `"$(ConvertTo-EscapedTerraformString $accessNativeCamel)`""
     }
     
     # Advanced settings
@@ -2676,12 +3312,14 @@ function New-AccessRuleBlock {
             $overrideBlocks = @()
             foreach ($override in $domainOverrides) {
                 $locationIds = Get-PropValue $override 'location_ids' @()
-                $locationIdsStr = ($locationIds | ForEach-Object { "`"$_`"" }) -join ', '
+                # -ExtractLocals swaps each UUID for local.resource_locations.<k>.uuid;
+                # without the catalogue Resolve-LocationRef returns the quoted literal.
+                $locationIdsStr = (@($locationIds) | ForEach-Object { Resolve-LocationRef ([string]$_) }) -join ', '
                 $overrideBlock = @"
         {
-          fqdn         = "$(Get-PropValue $override 'fqdn' '')"
+          fqdn         = "$(ConvertTo-EscapedTerraformString (Get-PropValue $override 'fqdn' ''))"
           location_ids = [$locationIdsStr]
-          type         = "$(Get-PropValue $override 'type' '')"
+          type         = "$(ConvertTo-EscapedTerraformString (Get-PropValue $override 'type' ''))"
         }
 "@
                 $overrideBlocks += $overrideBlock
@@ -2702,10 +3340,19 @@ $domainOverridesContent
     if ($conditions -and $conditions.Count -gt 0) {
         $conditionBlocks = @()
         foreach ($condition in $conditions) {
+            # platform_filter is the only attribute a condition carries. Always
+            # emit it: the provider stores an absent filter as an empty string
+            # (not null), so omitting it would reintroduce a spurious diff after
+            # import. user_and_groups is deprecated and no longer emitted —
+            # user/group scope is generated as a TYPE_USERGROUP entry in
+            # rules[] instead.
+            $condLines = @()
+            $platformFilter = Get-PropValue $condition 'platform_filter' ''
+            $condLines += "          platform_filter = `"$(ConvertTo-EscapedTerraformString $platformFilter)`""
+            $condBody = $condLines -join "`n"
             $conditionBlock = @"
         {
-          platform_filter = "$(Get-PropValue $condition 'platform_filter' '')"
-          user_and_groups = {}
+$condBody
         }
 "@
             $conditionBlocks += $conditionBlock
@@ -2738,25 +3385,38 @@ $conditionsContent
         $ruleBlocks = @()
         foreach ($r in $rules) {
             $values = Get-PropValue $r 'values' @()
-            $valuesStr = ($values | ForEach-Object { "`"$_`"" }) -join ', '
-            
+            $valuesStr = ($values | ForEach-Object { "`"$(ConvertTo-EscapedTerraformString $_)`"" }) -join ', '
+
             # Handle both camelCase (API) and snake_case (terraform) field names
             $tagSource = Get-PropValue $r 'tag_source'
             if (-not $tagSource) { $tagSource = Get-PropValue $r 'tagSource' '' }
             $tagKey = Get-PropValue $r 'tag_key'
             if (-not $tagKey) { $tagKey = Get-PropValue $r 'tagKey' '' }
-            
+
             $metadata = Get-PropValue $r 'metadata' @{}
             $metadataHcl = ConvertTo-HclDict $metadata
-            
+
+            $valuesExpr = "[$valuesStr]"
+            $metadataExpr = $metadataHcl
+            # -ExtractLocals: TYPE_USERGROUP rules whose values[]/metadata can be
+            # rebuilt exactly from the catalogue become local.* references. Anything
+            # else ($null) keeps the literals above.
+            if ((Get-PropValue $r 'type' '') -eq 'TYPE_USERGROUP') {
+                $refs = Resolve-UserGroupRuleRefs $r
+                if ($null -ne $refs) {
+                    $valuesExpr = $refs.Values
+                    $metadataExpr = $refs.Metadata
+                }
+            }
+
             $ruleBlock = @"
         {
-          type       = "$(Get-PropValue $r 'type' '')"
-          operator   = "$(Get-PropValue $r 'operator' '')"
-          tag_source = "$tagSource"
-          tag_key    = "$tagKey"
-          values     = [$valuesStr]
-          metadata   = $metadataHcl
+          type       = "$(ConvertTo-EscapedTerraformString (Get-PropValue $r 'type' ''))"
+          operator   = "$(ConvertTo-EscapedTerraformString (Get-PropValue $r 'operator' ''))"
+          tag_source = "$(ConvertTo-EscapedTerraformString $tagSource)"
+          tag_key    = "$(ConvertTo-EscapedTerraformString $tagKey)"
+          values     = $valuesExpr
+          metadata   = $metadataExpr
         }
 "@
             $ruleBlocks += $ruleBlock
@@ -2856,7 +3516,7 @@ function New-AccessPolicyResource {
                     $appsFormattedList += "citrixspa_application.$resourceName.id"
                 }
                 else {
-                    $appsFormattedList += "`"$app`""
+                    $appsFormattedList += "`"$(ConvertTo-EscapedTerraformString $app)`""
                 }
             }
             $appsFormatted = $appsFormattedList -join ', '
@@ -3005,7 +3665,7 @@ function New-SecurityGroupResource {
                 $appIdsList += "citrixspa_application.$resourceName.id"
             }
             else {
-                $appIdsList += "`"$appId`""
+                $appIdsList += "`"$(ConvertTo-EscapedTerraformString $appId)`""
             }
         }
         $appIdsStr = '[' + ($appIdsList -join ', ') + ']'
@@ -3031,10 +3691,10 @@ function New-SecurityGroupResource {
         safe_name = $safeName
         name = $nameAttr
         app_ids = $appIdsStr
-        system_data_in = $systemDataIn
-        system_data_out = $systemDataOut
-        unpublished_app_data_in = $unpublishedAppDataIn
-        unpublished_app_data_out = $unpublishedAppDataOut
+        system_data_in = ConvertTo-EscapedTerraformString $systemDataIn
+        system_data_out = ConvertTo-EscapedTerraformString $systemDataOut
+        unpublished_app_data_in = ConvertTo-EscapedTerraformString $unpublishedAppDataIn
+        unpublished_app_data_out = ConvertTo-EscapedTerraformString $unpublishedAppDataOut
         optional_fields = $optionalPart
     }
     
@@ -3053,7 +3713,7 @@ function New-BrowserModeResource {
     
     $resource = Format-ResourceConfig -ResourceType 'browser_mode' -Parameters @{
         safe_name = $safeName
-        optional_fields = "  browser_mode = `"$BrowserMode`""
+        optional_fields = "  browser_mode = `"$(ConvertTo-EscapedTerraformString $BrowserMode)`""
     }
     
     return @($safeName, $resource)
@@ -3192,7 +3852,9 @@ function New-RoutingDomainResource {
     if ($null -eq $locationIds) {
         $locationIds = @()
     }
-    $optionalFields += "  location_ids = $(ConvertTo-TerraformStringList $locationIds)"
+    # ConvertTo-LocationIdList matches ConvertTo-TerraformStringList byte-for-byte
+    # when -ExtractLocals is off, and emits local.resource_locations.<k>.uuid when on.
+    $optionalFields += "  location_ids = $(ConvertTo-LocationIdList $locationIds)"
     
     # Build the resource block
     $optionalPart = ''
@@ -3282,13 +3944,20 @@ function New-SessionPolicyRuleBlock {
             $condAttrs = @()
 
             $condType = Get-PropValue $cond 'type' ''
-            $condAttrs += "          type = `"$condType`""
+            $condAttrs += "          type = `"$(ConvertTo-EscapedTerraformString $condType)`""
 
             $operator = Get-PropValue $cond 'operator' ''
-            $condAttrs += "          operator = `"$operator`""
+            $condAttrs += "          operator = `"$(ConvertTo-EscapedTerraformString $operator)`""
+
+            # -ExtractLocals: resolved once here because values and metadata are
+            # emitted at two separate points below and must agree. $null keeps both
+            # literal. A non-null result implies metadata had entries, so the
+            # metadata branch further down is guaranteed to fire.
+            $condRefs = $null
+            if ($condType -eq 'TYPE_USERGROUP') { $condRefs = Resolve-UserGroupRuleRefs $cond }
 
             $values = Get-PropValue $cond 'values' @()
-            $valuesStr = ConvertTo-TerraformStringList @($values)
+            $valuesStr = if ($null -ne $condRefs) { $condRefs.Values } else { ConvertTo-TerraformStringList @($values) }
             $condAttrs += "          values = $valuesStr"
 
             $tagSource = Get-PropValue $cond 'tag_source'
@@ -3305,10 +3974,12 @@ function New-SessionPolicyRuleBlock {
 
             $metadata = Get-PropValue $cond 'metadata'
             if ($null -ne $metadata) {
+                # IDictionary, not [hashtable]: an [ordered]@{} is an
+                # OrderedDictionary and fails an -is [hashtable] test.
                 $hasEntries = ($metadata -is [PSCustomObject] -and ($metadata.PSObject.Properties | Measure-Object).Count -gt 0) -or
-                              ($metadata -is [hashtable] -and $metadata.Count -gt 0)
+                              ($metadata -is [System.Collections.IDictionary] -and $metadata.Count -gt 0)
                 if ($hasEntries) {
-                    $metadataHcl = ConvertTo-HclDict $metadata
+                    $metadataHcl = if ($null -ne $condRefs) { $condRefs.Metadata } else { ConvertTo-HclDict $metadata }
                     $condAttrs += "          metadata = $metadataHcl"
                 }
             }
@@ -3463,6 +4134,50 @@ function Get-MemoryDataSummary {
     return $summary
 }
 
+function Confirm-GeneratedHclParses {
+    <#
+    .SYNOPSIS
+        Format a generated file and use terraform fmt's exit code as a syntax gate
+
+    .DESCRIPTION
+        'terraform fmt <file>' rewrites formatting drift in place and still exits 0,
+        so a non-zero exit does not mean "badly indented" — it means terraform could
+        not parse the file, i.e. we emitted invalid HCL. That must fail the run:
+        returning success there hands the user an unusable spa_resources.tf and the
+        generation bug only surfaces at their next plan.
+
+        A missing terraform is a different case and is not a failure. The file is
+        still valid HCL, just unformatted, and the offline golden test normalises
+        whitespace so it passes on a machine without terraform.
+
+    .OUTPUTS
+        $true when the file parses (or terraform is unavailable), $false when
+        terraform rejected it.
+    #>
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Get-Command terraform -ErrorAction SilentlyContinue)) {
+        Write-WarningMessage "terraform not found on PATH; skipping fmt (generated file is still valid HCL)"
+        return $true
+    }
+
+    Push-Location (Split-Path -Parent $Path)
+    try {
+        $fmtResult = & terraform fmt $Path 2>&1
+    }
+    finally {
+        Pop-Location
+    }
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-SuccessMessage "Terraform fmt completed successfully!"
+        return $true
+    }
+
+    Write-ErrorMessage "Terraform fmt rejected $(Split-Path -Leaf $Path); it is not valid HCL: $fmtResult"
+    return $false
+}
+
 function New-TerraformResources {
     <#
     .SYNOPSIS
@@ -3473,13 +4188,26 @@ function New-TerraformResources {
     
     # Reset used names
     $script:UsedNames.Clear()
-    
+    $script:UsedLocalNames.Clear()
+
+    # Pass 1 of -ExtractLocals: catalogue the values worth hoisting, before any
+    # emitter runs. Left $null otherwise, which is every emitter's signal to keep
+    # producing the literal output it always has.
+    $script:SharedCatalog = $null
+    if ($script:ExtractLocals) {
+        $script:SharedCatalog = Build-SharedValueCatalog
+        Write-Status "Shared values: $($script:SharedCatalog.Locations.Count) resource location(s), $($script:SharedCatalog.Identities.Count) user/group identity(ies)"
+    }
+
     $resources = @()
     $resources += "# Complete spa_resources.tf with all required attributes"
     $resources += "# Generated by SPA Manager"
     $resources += "# Generated on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
     $resources += ""
-    
+
+    # Pass 2 emits local.* references, so the locals block has to precede them.
+    $resources += New-SharedValuesLocalsBlock -Catalog $script:SharedCatalog
+
     $importCommands = @()
     
     # Build mapping of application IDs to terraform resource names
@@ -3678,14 +4406,18 @@ function New-TerraformResources {
                 $machineId = Get-PropValue $access 'id' ''
                 $safeName = Get-SafeTerraformName -Name "tma_$machineName" -Prefix 'tma'
                 
+                # Every field below lands inside "..." in the template, so it is
+                # escaped here — the same convention the application, policy,
+                # certificate and routing-domain emitters follow. duration is
+                # numeric and unquoted, so it is not escaped.
                 $resourceConfig = Format-ResourceConfig -ResourceType 'terminate_machine_access' -Parameters @{
                     safe_name = $safeName
-                    account_name = Get-PropValue $access 'account_name' ''
-                    name = Get-PropValue $access 'name' ''
-                    dns_host_name = Get-PropValue $access 'dns_host_name' ''
-                    domain_name = Get-PropValue $access 'domain_name' ''
-                    object_id = Get-PropValue $access 'object_id' ''
-                    idp_type = Get-PropValue $access 'idp_type' ''
+                    account_name = ConvertTo-EscapedTerraformString (Get-PropValue $access 'account_name' '')
+                    name = ConvertTo-EscapedTerraformString (Get-PropValue $access 'name' '')
+                    dns_host_name = ConvertTo-EscapedTerraformString (Get-PropValue $access 'dns_host_name' '')
+                    domain_name = ConvertTo-EscapedTerraformString (Get-PropValue $access 'domain_name' '')
+                    object_id = ConvertTo-EscapedTerraformString (Get-PropValue $access 'object_id' '')
+                    idp_type = ConvertTo-EscapedTerraformString (Get-PropValue $access 'idp_type' '')
                     duration = Get-PropValue $access 'duration' 0
                 }
                 
@@ -3720,11 +4452,11 @@ function New-TerraformResources {
                 
                 $resourceConfig = Format-ResourceConfig -ResourceType 'terminate_user_access' -Parameters @{
                     safe_name = $safeName
-                    account_name = Get-PropValue $access 'account_name' ''
-                    email = Get-PropValue $access 'email' ''
-                    domain_name = Get-PropValue $access 'domain_name' ''
-                    object_id = Get-PropValue $access 'object_id' ''
-                    idp_type = Get-PropValue $access 'idp_type' ''
+                    account_name = ConvertTo-EscapedTerraformString (Get-PropValue $access 'account_name' '')
+                    email = ConvertTo-EscapedTerraformString (Get-PropValue $access 'email' '')
+                    domain_name = ConvertTo-EscapedTerraformString (Get-PropValue $access 'domain_name' '')
+                    object_id = ConvertTo-EscapedTerraformString (Get-PropValue $access 'object_id' '')
+                    idp_type = ConvertTo-EscapedTerraformString (Get-PropValue $access 'idp_type' '')
                     duration = Get-PropValue $access 'duration' 0
                 }
                 
@@ -3746,27 +4478,18 @@ function New-TerraformResources {
         $spaResourcesPath = Join-Path $script:WorkDir 'spa_resources.tf'
         Set-Content -Path $spaResourcesPath -Value ($resources -join "`n") -Encoding UTF8
         Write-SuccessMessage "Generated spa_resources.tf"
-        
-        # Format the file
-        Push-Location $script:WorkDir
-        try {
-            $fmtResult = & terraform fmt $spaResourcesPath 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-SuccessMessage "Terraform fmt completed successfully!"
-            }
-            else {
-                Write-ErrorMessage "Terraform fmt failed: $fmtResult"
-            }
-        }
-        finally {
-            Pop-Location
-        }
     }
     catch {
         Write-ErrorMessage "Error writing spa_resources.tf: $_"
         return $false
     }
-    
+
+    # Deliberately outside the write above: a formatter problem is not a write
+    # failure. But a rejected file is still a failed generation — see the function.
+    if (-not (Confirm-GeneratedHclParses -Path $spaResourcesPath)) {
+        return $false
+    }
+
     # Generate Terraform import blocks
     if ($importCommands.Count -gt 0) {
         New-TerraformImportBlocks -ImportCommands $importCommands
@@ -3996,7 +4719,13 @@ function Invoke-Tests {
         @{ Name = 'Work directory exists'; Test = { Test-Path $script:WorkDir } },
         @{ Name = 'Can create temp file'; Test = { Test-FileCreation } },
         @{ Name = 'JSON parsing'; Test = { Test-JsonParsing } },
-        @{ Name = 'Terraform name sanitization'; Test = { Test-NameSanitization } }
+        @{ Name = 'Terraform name sanitization'; Test = { Test-NameSanitization } },
+        @{ Name = 'Tenant strings survive HCL escaping'; Test = { Test-TerraformStringEscaping } },
+        @{ Name = 'Map keys differing only in case both survive'; Test = { Test-HclMapKeyCaseSensitivity } },
+        @{ Name = 'Shared value catalogue (-ExtractLocals)'; Test = { Test-SharedValueCatalog } },
+        @{ Name = 'User/group reference extraction (-ExtractLocals)'; Test = { Test-UserGroupRefExtraction } },
+        @{ Name = 'Generated output matches golden files'; Test = { Test-SharedValuesGoldenFile } },
+        @{ Name = 'Invalid generated HCL fails the run'; Test = { Test-GeneratedHclSyntaxGate } }
     )
     
     $passed = 0
@@ -4088,6 +4817,614 @@ function Test-NameSanitization {
     }
     catch {
         return $false
+    }
+}
+
+function Test-HclMapKeyCaseSensitivity {
+    <#
+    .SYNOPSIS
+        Two map keys differing only in case must both survive emission
+
+    .DESCRIPTION
+        `ConvertTo-HclDict` / `ConvertTo-HclMap` copy their input into a local
+        dictionary before emitting it. That destination used to be `[ordered]@{}`,
+        which is case-INSENSITIVE: given a case-sensitive source holding
+        "Sales Team" and "SALES TEAM", the second assignment overwrote the first,
+        so one metadata entry vanished from the generated config and the survivor
+        carried the wrong value.
+
+        The golden fixture cannot reach this. Every API payload is parsed with a
+        plain ConvertFrom-Json, which REFUSES a JSON object whose keys differ only
+        in case, and a plain @{} cannot hold such a pair either — so only an
+        Ordinal dictionary gets both keys this far, and only this direct test
+        exercises that. Directory display names are case-bearing data we have to
+        round-trip exactly, hence the check.
+    #>
+
+    $source = New-OrdinalOrderedDictionary
+    $source['Sales Team'] = 'OID:/azuread/aaaaaaaa-0000-0000-0000-00000000000a'
+    $source['SALES TEAM'] = 'OID:/azuread/bbbbbbbb-0000-0000-0000-00000000000b'
+
+    foreach ($case in @(
+            @{ What = 'ConvertTo-HclDict'; Emitted = (ConvertTo-HclDict $source) },
+            @{ What = 'ConvertTo-HclMap'; Emitted = (ConvertTo-HclMap $source) }
+        )) {
+        foreach ($key in @($source.Keys)) {
+            # -cmatch: a case-insensitive search would find "SALES TEAM" when
+            # only "Sales Team" was emitted, which is the very bug under test.
+            if ($case.Emitted -cnotmatch [regex]::Escape($key)) {
+                Write-ErrorMessage "$($case.What) dropped the case-sensitive key '$key': $($case.Emitted)"
+                return $false
+            }
+            if ($case.Emitted -cnotmatch [regex]::Escape($source[$key])) {
+                Write-ErrorMessage "$($case.What) dropped the value for '$key': $($case.Emitted)"
+                return $false
+            }
+        }
+    }
+
+    return $true
+}
+
+function Test-TerraformStringEscaping {
+    <#
+    .SYNOPSIS
+        A tenant string must come back out of terraform byte-for-byte
+
+    .DESCRIPTION
+        The escaper is the only thing standing between arbitrary tenant text and
+        generated HCL. Quotes and backslashes have always been handled; `${` and
+        `%{` were not, and they are the dangerous pair, because an unescaped one
+        is still VALID HCL — terraform fmt exits 0, the syntax gate says nothing,
+        and terraform quietly evaluates the template at plan time instead of
+        treating it as text.
+
+        Asserting the escaped form is not enough on its own: it would pass just
+        as happily if the escape were wrong in a way HCL does not accept. So when
+        terraform is available this round-trips the value through a real
+        `terraform console` and requires the original string back.
+    #>
+
+    $original = 'Sales ${1 + 1} Team %{if true}X%{endif} "quoted" back\slash'
+    $escaped = ConvertTo-EscapedTerraformString $original
+
+    foreach ($pair in @(
+            @{ Needle = '$${'; What = 'interpolation sigil' },
+            @{ Needle = '%%{'; What = 'directive sigil' },
+            @{ Needle = '\"'; What = 'quote' },
+            @{ Needle = '\\'; What = 'backslash' }
+        )) {
+        if (-not $escaped.Contains($pair.Needle)) {
+            Write-ErrorMessage "Escaped string is missing the $($pair.What) escape: $escaped"
+            return $false
+        }
+    }
+
+    # Testing the helper in isolation is not enough: the bug that matters is a
+    # SINK that forgets to call it. The fixture carries `${` and `%{` on rules
+    # that deliberately fall through to literal emission, so scan both generated
+    # modes for a sigil that came out unescaped. The generator never emits
+    # Terraform template syntax of its own, so any bare `${`/`%{` in the output
+    # is tenant text that escaped un-neutralised.
+    foreach ($withLocals in @($false, $true)) {
+        $generated = Invoke-SharedValuesGeneration -WithExtractLocals:$withLocals
+        $mode = if ($withLocals) { '-ExtractLocals' } else { 'literal' }
+        foreach ($m in [regex]::Matches($generated, '(?<!\$)\$\{|(?<!%)%\{')) {
+            $line = ($generated.Substring(0, $m.Index) -split "`n")[-1]
+            Write-ErrorMessage "Unescaped template sigil in $mode output: $($line.Trim())"
+            return $false
+        }
+    }
+
+    if (-not (Get-Command terraform -ErrorAction SilentlyContinue)) {
+        Write-Status "terraform not on PATH; skipping the escaping round-trip"
+        return $true
+    }
+
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "spa-escape-test-$([guid]::NewGuid())"
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+    try {
+        Set-Content -Path (Join-Path $tempDir 'main.tf') -Value "locals {`n  v = `"$escaped`"`n}" -Encoding UTF8
+
+        Push-Location $tempDir
+        try {
+            $roundTripped = 'local.v' | & terraform console 2>&1
+        }
+        finally {
+            Pop-Location
+        }
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-ErrorMessage "terraform rejected the escaped string: $roundTripped"
+            return $false
+        }
+
+        # terraform console echoes the value as an HCL string literal, so the
+        # quotes and backslash come back escaped; compare against that form.
+        $expected = '"' + ($original -replace '\\', '\\' -replace '"', '\"') + '"'
+        $actual = ($roundTripped | Select-Object -Last 1).Trim()
+        if ($actual -cne $expected) {
+            Write-ErrorMessage "Escaping is not round-trip safe.`n    expected $expected`n    actual   $actual"
+            return $false
+        }
+
+        return $true
+    }
+    catch {
+        Write-ErrorMessage "Test-TerraformStringEscaping: $_"
+        return $false
+    }
+    finally {
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Test-GeneratedHclSyntaxGate {
+    <#
+    .SYNOPSIS
+        terraform fmt must pass a merely unformatted file and reject an unparseable one
+
+    .DESCRIPTION
+        The whole point of gating generation on fmt's exit code is that the two
+        cases are distinguishable. If fmt ever started failing on formatting drift,
+        this gate would turn every run into a false failure; if it ever stopped
+        failing on a parse error, the gate would be dead code. Pin both directions.
+    #>
+
+    if (-not (Get-Command terraform -ErrorAction SilentlyContinue)) {
+        Write-Status "terraform not on PATH; skipping HCL syntax gate test"
+        return $true
+    }
+
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "spa-hclgate-test-$([guid]::NewGuid())"
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+    try {
+        # Valid HCL, badly indented: fmt rewrites it in place and exits 0.
+        $unformatted = Join-Path $tempDir 'unformatted.tf'
+        Set-Content -Path $unformatted -Value "resource `"a`" `"b`" {`n        x=1`n}" -Encoding UTF8
+        if (-not (Confirm-GeneratedHclParses -Path $unformatted)) {
+            Write-ErrorMessage "Formatting drift must not fail generation"
+            return $false
+        }
+
+        # Unparseable: fmt exits non-zero, and generation must not report success.
+        # 6>$null swallows the expected [ERROR] line so a passing suite stays green
+        # on screen (Write-Host goes to the information stream in PowerShell 7).
+        $broken = Join-Path $tempDir 'broken.tf'
+        Set-Content -Path $broken -Value "resource `"a`" `"b`" {`n  x =`n}" -Encoding UTF8
+        if (Confirm-GeneratedHclParses -Path $broken 6>$null) {
+            Write-ErrorMessage "Invalid HCL was accepted; generation would return success with an unusable file"
+            return $false
+        }
+
+        return $true
+    }
+    catch {
+        Write-ErrorMessage "Test-GeneratedHclSyntaxGate: $_"
+        return $false
+    }
+    finally {
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# -----------------------------------------------------------------------------
+# -ExtractLocals tests
+#
+# These run entirely offline against testdata/shared-values-dataset.json — no
+# credentials, no tenant, no network. They are the gate that proves the flag
+# collapses what it should and leaves alone what it must not; the e2e round-trip
+# only proves Terraform tolerates the result.
+#
+# Regenerate the golden files after an intentional output change:
+#     SPA_UPDATE_GOLDEN=1 pwsh ./spa_manager.ps1 -Test
+# and review the diff before committing it.
+# -----------------------------------------------------------------------------
+
+function Get-SharedValuesTestDataset {
+    <#
+    .SYNOPSIS
+        Load the synthetic resource dataset used by the -ExtractLocals tests
+
+    .DESCRIPTION
+        Reproduces the exact shape a live run produces: $script:ResourceData is a
+        hashtable of hashtables, but the resource objects inside are PSCustomObject
+        (plain ConvertFrom-Json, no -AsHashtable). The distinction matters — the
+        emitters branch on `-is [PSCustomObject]` in several places, so a dataset
+        built entirely from hashtables would silently exercise different code.
+    #>
+
+    $path = Join-Path $PSScriptRoot 'testdata/shared-values-dataset.json'
+    if (-not (Test-Path $path)) {
+        throw "Test dataset not found: $path"
+    }
+
+    $raw = Get-Content -Path $path -Raw | ConvertFrom-Json
+    $data = @{}
+    foreach ($prop in $raw.PSObject.Properties) {
+        # `_comment` documents the fixture; it is not resource data.
+        if ($prop.Name -eq '_comment') { continue }
+        $inner = @{}
+        foreach ($innerProp in $prop.Value.PSObject.Properties) {
+            $inner[$innerProp.Name] = @($innerProp.Value)
+        }
+        $data[$prop.Name] = $inner
+    }
+    return $data
+}
+
+function ConvertTo-NormalizedHcl {
+    <#
+    .SYNOPSIS
+        Reduce generated HCL to the parts the golden comparison cares about
+
+    .DESCRIPTION
+        Drops the generation timestamp and blank lines, then flattens the
+        whitespace `terraform fmt` owns: indentation, `=` alignment, and the
+        space it inserts after a comma inside a single-line collection
+        (`["a","b"]` -> `["a", "b"]`). With all three normalised the comparison
+        gives the same verdict whether or not terraform is installed on the
+        machine running the test — the release workflow has pwsh but no
+        terraform, so a fmt-sensitive comparison would fail the release gate.
+
+        Normalisation is applied only OUTSIDE double-quoted spans. Whitespace and
+        commas inside a string are data — a token list that gained a space after
+        its comma is a real defect and must still fail the diff.
+    #>
+    param([string]$Content)
+
+    $lines = @()
+    foreach ($line in ($Content -split "`r?`n")) {
+        if ($line -match '^\s*# Generated on ') { continue }
+
+        $rebuilt = ''
+        # The capture group makes Split emit the quoted spans as elements too, so
+        # the line can be reassembled with only the unquoted spans rewritten.
+        foreach ($span in [regex]::Split($line, '("(?:[^"\\]|\\.)*")')) {
+            if ($span.StartsWith('"')) { $rebuilt += $span; continue }
+            $rebuilt += (($span -replace '\s+', ' ') -replace '\s*,\s*', ', ')
+        }
+
+        $trimmed = $rebuilt.Trim()
+        if ([string]::IsNullOrEmpty($trimmed)) { continue }
+        $lines += $trimmed
+    }
+    return ($lines -join "`n")
+}
+
+function Invoke-SharedValuesGeneration {
+    <#
+    .SYNOPSIS
+        Generate spa_resources.tf from the test dataset in a throwaway directory
+
+    .DESCRIPTION
+        Swaps every piece of global state New-TerraformResources touches, runs it,
+        reads the result back and restores the original state — so the test leaves
+        no trace on a real run.
+    #>
+    param([switch]$WithExtractLocals)
+
+    $savedData = $script:ResourceData
+    $savedWorkDir = $script:WorkDir
+    $savedNames = $script:UsedNames
+    $savedLocalNames = $script:UsedLocalNames
+    $savedCatalog = $script:SharedCatalog
+    $savedExtract = $script:ExtractLocals
+    $savedCounts = $script:ResourceCounts
+
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "spa-locals-test-$([guid]::NewGuid())"
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+    try {
+        $script:ResourceData = Get-SharedValuesTestDataset
+        $script:WorkDir = $tempDir
+        $script:UsedNames = @{}
+        $script:UsedLocalNames = @{}
+        $script:SharedCatalog = $null
+        $script:ExtractLocals = $WithExtractLocals.IsPresent
+        $script:ResourceCounts = @{}
+        foreach ($key in $savedCounts.Keys) { $script:ResourceCounts[$key] = 0 }
+
+        # Don't discard the result: New-TerraformResources returns $false when
+        # the syntax gate rejects what it just wrote, and the file is still on
+        # disk. Reading it anyway would let the golden cases compare — and pass
+        # on — output terraform cannot parse, which is exactly the failure the
+        # gate exists to stop.
+        if (-not (New-TerraformResources)) {
+            throw 'New-TerraformResources failed (see errors above); generated fixture output is not usable'
+        }
+        return Get-Content -Path (Join-Path $tempDir 'spa_resources.tf') -Raw
+    }
+    finally {
+        $script:ResourceData = $savedData
+        $script:WorkDir = $savedWorkDir
+        $script:UsedNames = $savedNames
+        $script:UsedLocalNames = $savedLocalNames
+        $script:SharedCatalog = $savedCatalog
+        $script:ExtractLocals = $savedExtract
+        $script:ResourceCounts = $savedCounts
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Test-SharedValuesGoldenFile {
+    <#
+    .SYNOPSIS
+        Diff both emission modes against checked-in expected output
+
+    .DESCRIPTION
+        Catches any unintended change to EITHER path: the literal default (which
+        must stay byte-stable forever) and the -ExtractLocals output.
+    #>
+
+    $cases = @(
+        @{ File = 'expected-literal.tf'; Extract = $false },
+        @{ File = 'expected-extractlocals.tf'; Extract = $true }
+    )
+
+    $ok = $true
+    $regenerated = $false
+    foreach ($case in $cases) {
+        $raw = Invoke-SharedValuesGeneration -WithExtractLocals:$case.Extract
+        $actual = ConvertTo-NormalizedHcl $raw
+        $expectedPath = Join-Path $PSScriptRoot "testdata/$($case.File)"
+
+        if ($env:SPA_UPDATE_GOLDEN -eq '1') {
+            # Write the RAW generated file, not $actual: a golden made of
+            # normalised text is unindented and unreviewable, and would hide any
+            # formatting regression from the reader of the diff. Both sides are
+            # normalised at comparison time instead. The generation timestamp is
+            # dropped so regenerating does not churn the file.
+            $goldenLines = @($raw -split "`r?`n" | Where-Object { $_ -notmatch '^\s*# Generated on ' })
+            Set-Content -Path $expectedPath -Value ($goldenLines -join "`n") -Encoding UTF8
+            Write-WarningMessage "Rewrote golden file $($case.File) (SPA_UPDATE_GOLDEN=1)"
+            $regenerated = $true
+            continue
+        }
+
+        if (-not (Test-Path $expectedPath)) {
+            Write-ErrorMessage "Missing golden file: $expectedPath (regenerate with SPA_UPDATE_GOLDEN=1)"
+            $ok = $false
+            continue
+        }
+
+        $expected = ConvertTo-NormalizedHcl (Get-Content -Path $expectedPath -Raw)
+        if ($actual -cne $expected) {
+            $ok = $false
+            Write-ErrorMessage "Generated output differs from $($case.File):"
+            $diff = Compare-Object -ReferenceObject ($expected -split "`n") -DifferenceObject ($actual -split "`n")
+            foreach ($entry in @($diff | Select-Object -First 30)) {
+                $marker = if ($entry.SideIndicator -eq '=>') { 'actual  ' } else { 'expected' }
+                Write-Host "    [$marker] $($entry.InputObject)"
+            }
+        }
+    }
+
+    if ($regenerated) {
+        # Regenerating is not verifying: nothing was compared, so reporting
+        # success here would let a run that rewrote the expectations look
+        # exactly like a run that met them. Read the git diff instead.
+        Write-ErrorMessage "Golden files were regenerated, not verified — review the diff, then re-run without SPA_UPDATE_GOLDEN"
+        return $false
+    }
+
+    return $ok
+}
+
+function Test-SharedValueCatalog {
+    <#
+    .SYNOPSIS
+        Verify catalogue collection: dedupe, key sanitization, name conflicts
+    #>
+
+    $savedData = $script:ResourceData
+    $savedLocalNames = $script:UsedLocalNames
+    try {
+        $script:ResourceData = Get-SharedValuesTestDataset
+        $script:UsedLocalNames = @{}
+        $catalog = Build-SharedValueCatalog
+
+        # Locations: 0001 and 0002 are named and reused; 000e is uuid-only (two
+        # routing domains share it, so it clears the repeat threshold);
+        # 0003 is reported under two names, so it is excluded.
+        $expectedLocationUuids = @(
+            '11111111-1111-1111-1111-000000000001',
+            '11111111-1111-1111-1111-000000000002',
+            '11111111-1111-1111-1111-00000000000e'
+        )
+        foreach ($uuid in $expectedLocationUuids) {
+            if (-not $catalog.Locations.Contains($uuid)) {
+                Write-ErrorMessage "Catalogue is missing resource location $uuid"
+                return $false
+            }
+        }
+        if ($catalog.Locations.Contains('11111111-1111-1111-1111-000000000003')) {
+            Write-ErrorMessage "Conflicting-name resource location was catalogued; it must stay literal"
+            return $false
+        }
+        # Referenced exactly once each: 000f by the "orphan" routing domain only,
+        # 000d by one application's locations[]. Hoisting either buys nothing —
+        # there is no second site an edit would have to reach — and costs a
+        # locals entry plus an indirection. The threshold applies whether or not
+        # the location has a name.
+        foreach ($uuid in @('11111111-1111-1111-1111-00000000000f', '11111111-1111-1111-1111-00000000000d')) {
+            if ($catalog.Locations.Contains($uuid)) {
+                Write-ErrorMessage "Resource location $uuid is referenced once and must stay literal"
+                return $false
+            }
+        }
+        # 0004 is "DC North" in one app and "DC NORTH" in another. A case-only
+        # rename is still a conflict; a case-insensitive comparison would miss it
+        # and silently emit whichever casing happened to be discovered first.
+        if ($catalog.Locations.Contains('11111111-1111-1111-1111-000000000004')) {
+            Write-ErrorMessage "Resource location renamed only by case was catalogued; it must stay literal"
+            return $false
+        }
+        # aaaa...a is reported by an application and AAAA...A by a routing domain.
+        # A uuid is case-insensitive by spec but Terraform compares the strings, so
+        # collapsing both onto one locals entry would rewrite one site's value and
+        # make the -ExtractLocals plan differ from the literal one.
+        if ($catalog.Locations.Contains('aaaa1111-1111-1111-1111-00000000000a')) {
+            Write-ErrorMessage "Resource location reported in mixed casing was catalogued; it must stay literal"
+            return $false
+        }
+        if ($catalog.Locations.Count -ne $expectedLocationUuids.Count) {
+            Write-ErrorMessage "Expected $($expectedLocationUuids.Count) catalogued locations, got $($catalog.Locations.Count)"
+            return $false
+        }
+        if ($catalog.Locations['11111111-1111-1111-1111-000000000001'].Key -ne 'DC_East') {
+            Write-ErrorMessage "Unexpected locals key for DC East: $($catalog.Locations['11111111-1111-1111-1111-000000000001'].Key)"
+            return $false
+        }
+
+        # Identities: Alice appears in four policies plus the session policy and
+        # must be catalogued exactly once; Bob appears twice. Plus "Sales Team",
+        # "SALES TEAM" and "for" — five in total. "Empty Token Grp" is NOT
+        # catalogued (see the empty-token refusal below).
+        if ($catalog.Identities.Count -ne 5) {
+            Write-ErrorMessage "Expected 5 catalogued identities, got $($catalog.Identities.Count)"
+            return $false
+        }
+
+        # Display names differing only in case are different identities. Merging
+        # them would emit one policy's metadata under the other's display name.
+        # Ordinal, or the two case-only variants would collide in this very lookup.
+        $byName = New-OrdinalOrderedDictionary
+        foreach ($key in $catalog.Identities.Keys) { $byName[$catalog.Identities[$key].Name] = $catalog.Identities[$key] }
+        foreach ($name in @('Sales Team', 'SALES TEAM')) {
+            if (-not $byName.Contains($name)) {
+                Write-ErrorMessage "Identity '$name' was merged away by a case-insensitive comparison"
+                return $false
+            }
+        }
+        if ($byName['Sales Team'].Key -ceq $byName['SALES TEAM'].Key) {
+            Write-ErrorMessage "Case-only display-name variants share the locals key '$($byName['Sales Team'].Key)'"
+            return $false
+        }
+
+        # An HCL keyword cannot be a bare object key: `{ for = {...} }` parses as
+        # a for-expression, not a map.
+        if (-not $byName.Contains('for')) {
+            Write-ErrorMessage "Identity named 'for' was not catalogued"
+            return $false
+        }
+        if ($script:HclReservedWords -ccontains $byName['for'].Key) {
+            Write-ErrorMessage "Locals key '$($byName['for'].Key)' is a reserved HCL word"
+            return $false
+        }
+
+        # A token list with an empty member is not reproducible: the literal
+        # session-policy emitter drops falsy values, so collapsing it would make
+        # the two emission modes plan differently.
+        if ($byName.Contains('Empty Token Grp')) {
+            Write-ErrorMessage "Identity with an empty token was catalogued; it must stay literal"
+            return $false
+        }
+
+        foreach ($key in $catalog.Identities.Keys) {
+            $identity = $catalog.Identities[$key]
+            if ($identity.Key -notmatch '^[a-zA-Z_][a-zA-Z0-9_]*$') {
+                Write-ErrorMessage "Locals key '$($identity.Key)' is not a valid Terraform identifier"
+                return $false
+            }
+            if (($identity.Tokens -join ',') -cne ($key -split "`0")[1]) {
+                Write-ErrorMessage "Tokens for '$($identity.Name)' do not rejoin to the original metadata string"
+                return $false
+            }
+        }
+
+        return $true
+    }
+    catch {
+        Write-ErrorMessage "Test-SharedValueCatalog: $_"
+        return $false
+    }
+    finally {
+        $script:ResourceData = $savedData
+        $script:UsedLocalNames = $savedLocalNames
+    }
+}
+
+function Test-UserGroupRefExtraction {
+    <#
+    .SYNOPSIS
+        Verify the extractability rules, especially the refusals
+
+    .DESCRIPTION
+        A false positive here silently changes what a policy grants, so every
+        non-reconstructable shape must return $null and fall back to literals.
+    #>
+
+    $savedData = $script:ResourceData
+    $savedLocalNames = $script:UsedLocalNames
+    $savedCatalog = $script:SharedCatalog
+    try {
+        $script:ResourceData = Get-SharedValuesTestDataset
+        $script:UsedLocalNames = @{}
+        $script:SharedCatalog = Build-SharedValueCatalog
+
+        $alice = 'OID:/azuread/00000000-0000-0000-0000-000000000001'
+        $aliceSid = 'SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001'
+        $aliceJoined = "$alice,$aliceSid"
+        $bob = 'OID:/azuread/00000000-0000-0000-0000-000000000002'
+
+        # Should extract: single identity, exact match.
+        $single = Resolve-UserGroupRuleRefs @{
+            type     = 'TYPE_USERGROUP'
+            values   = @($alice, $aliceSid)
+            metadata = @{ 'Alice Smith' = $aliceJoined }
+        }
+        if ($null -eq $single -or $single.Values -notmatch '^local\.users\.[A-Za-z0-9_]+\.tokens$') {
+            Write-ErrorMessage "Single-identity rule did not produce a plain tokens reference"
+            return $false
+        }
+
+        # Should extract: two identities, concat/merge.
+        $pair = Resolve-UserGroupRuleRefs @{
+            type     = 'TYPE_USERGROUP'
+            values   = @($alice, $aliceSid, $bob)
+            metadata = [ordered]@{ 'Alice Smith' = $aliceJoined; 'Bob Jones' = $bob }
+        }
+        if ($null -eq $pair -or $pair.Values -notlike 'concat(*' -or $pair.Metadata -notlike 'merge(*') {
+            Write-ErrorMessage "Two-identity rule did not produce concat()/merge()"
+            return $false
+        }
+
+        # Must refuse: each of these would change the rendered values[].
+        $refusals = @(
+            @{ Why = 'tokens out of order';   Rule = @{ values = @($aliceSid, $alice); metadata = @{ 'Alice Smith' = $aliceJoined } } },
+            @{ Why = 'tokens not contiguous'; Rule = @{ values = @($alice, $bob, $aliceSid); metadata = @{ 'Alice Smith' = $aliceJoined } } },
+            @{ Why = 'unaccounted extra value'; Rule = @{ values = @($alice, $aliceSid, 'EMAIL:/e2e/x@example.com'); metadata = @{ 'Alice Smith' = $aliceJoined } } },
+            @{ Why = 'no metadata';           Rule = @{ values = @('Everyone'); metadata = @{} } },
+            @{ Why = 'no values';             Rule = @{ values = @(); metadata = @{ 'Alice Smith' = $aliceJoined } } },
+            @{ Why = 'identity not catalogued'; Rule = @{ values = @('OID:/ad/unknown'); metadata = @{ 'Nobody' = 'OID:/ad/unknown' } } },
+            # Trailing comma -> an empty token. The literal session-policy emitter
+            # drops falsy values, so collapsing this would emit two tokens where
+            # the literal path emits one.
+            @{ Why = 'empty token';           Rule = @{ values = @('OID:/azuread/bbbbbbbb-0000-0000-0000-00000000000b', ''); metadata = @{ 'Empty Token Grp' = 'OID:/azuread/bbbbbbbb-0000-0000-0000-00000000000b,' } } },
+            # A display name that differs only in case from a catalogued one must
+            # not borrow that entry.
+            @{ Why = 'case-mismatched display name'; Rule = @{ values = @($alice, $aliceSid); metadata = @{ 'ALICE SMITH' = $aliceJoined } } }
+        )
+        foreach ($refusal in $refusals) {
+            if ($null -ne (Resolve-UserGroupRuleRefs $refusal.Rule)) {
+                Write-ErrorMessage "Rule with $($refusal.Why) was extracted; it must fall back to literals"
+                return $false
+            }
+        }
+
+        return $true
+    }
+    catch {
+        Write-ErrorMessage "Test-UserGroupRefExtraction: $_"
+        return $false
+    }
+    finally {
+        $script:ResourceData = $savedData
+        $script:UsedLocalNames = $savedLocalNames
+        $script:SharedCatalog = $savedCatalog
     }
 }
 
@@ -4580,7 +5917,16 @@ function Initialize-SPAManager {
     
     # Initialize used names tracker (hashtable used as a set)
     $script:UsedNames = @{}
-    
+
+    # Locals-block key tracker. Kept separate from $script:UsedNames so a locals
+    # key and a resource name can never steal each other's slot.
+    $script:UsedLocalNames = @{}
+
+    # Shared-value catalogue for -ExtractLocals. Stays $null unless the switch is
+    # given; every emitter treats $null as "emit literals exactly as before".
+    $script:SharedCatalog = $null
+    if ($null -eq $script:ExtractLocals) { $script:ExtractLocals = $false }
+
     # Initialize resource counts
     $script:ResourceCounts = @{
         applications            = 0
@@ -4673,6 +6019,7 @@ function Main {
     $script:VerboseMode = $VerboseOutput.IsPresent
     $script:LimitValue = $Limit
     $script:QueryIndividualDetails = -not $Quick.IsPresent
+    $script:ExtractLocals = $ExtractLocals.IsPresent
     
     if ($Id.Count -gt 0) {
         $script:ListDetailsEnabled = $true

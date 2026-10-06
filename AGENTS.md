@@ -21,12 +21,11 @@ Contributor reference for the Citrix Secure Private Access Terraform provider.
 
 ```bash
 make build       # Produces ./terraform-provider-citrixspa
-make install     # Installs to ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/0.1.0/<os>_<arch>/
+make install     # Installs to ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.0/<os>_<arch>/
 make test        # Unit tests
 make testacc     # Acceptance tests
 make fmt         # go fmt + terraform fmt
 make lint        # Run golangci-lint
-make docs        # Regenerate registry documentation (not used, docs are hand-written, not auto-generated)
 make check       # fmt + lint + test (all checks)
 make release     # goreleaser release --rm-dist
 ```
@@ -187,6 +186,32 @@ Service principal OAuth2 endpoint: `POST {token_url}/cctrustoauth2/{customerId}/
 5. Register `NewFooResource` in `provider.go` `Resources()` slice
 6. Add acceptance tests in `resource_foo_test.go`
 7. Write resource documentation in `docs/resources/foo.md` (documentation is hand-written, not auto-generated)
+8. If the resource carries resource-location UUIDs or user/group directory tokens, extend `Build-SharedValueCatalog` **and** the emitter's `-ExtractLocals` branch in `resource-listing-tool/spa_manager.ps1` — see the agent rule below
+
+## Resource-Listing Tool: two emission paths (agents: mandatory)
+
+`resource-listing-tool/spa_manager.ps1` emits every resource **twice**: the default literal path,
+and the `-ExtractLocals` path, which hoists shared values into a `locals` block and emits `local.*`
+references. `Build-SharedValueCatalog` collects the values; five emitters reference them
+(application `locations[]`, access-rule `domain_overrides[].location_ids`, access-rule
+`rules[]` for `TYPE_USERGROUP`, routing-domain `location_ids`, session-policy `condition[]`).
+
+**Agent rule:** whenever you add or change a field that carries a **resource-location UUID** or a
+**user/group directory token** — a new resource, a new rule or condition type, a renamed attribute
+— update *both* halves in the same change set. Leaving one behind fails **quietly**: the
+`-ExtractLocals` output just keeps the literal, which is still valid HCL and still plans clean.
+
+Then run the offline suite, which diffs both paths against checked-in golden files:
+
+```bash
+pwsh ./resource-listing-tool/spa_manager.ps1 -Test   # also runs via `go test ./...`
+```
+
+If the output change is intentional, regenerate and review the diff before committing:
+
+```bash
+SPA_UPDATE_GOLDEN=1 pwsh ./resource-listing-tool/spa_manager.ps1 -Test
+```
 
 ## Common Pitfalls
 

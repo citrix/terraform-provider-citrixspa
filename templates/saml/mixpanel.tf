@@ -1,0 +1,56 @@
+# Mixpanel — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_mixpanel_mixpanel_com" {
+  fqdn         = "mixpanel.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "Mixpanel"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_mixpanel_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "Mixpanel"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_mixpanel" {
+  name         = "Mixpanel"
+  type         = "saas"
+  state        = "complete"
+  description  = "System to track user interactions with web and mobile."
+  url          = "https://mixpanel.com/report/<Account_ID>/insights"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAAEnQAABJ0Ad5mH3gAAAAZdEVYdFNvZnR3YXJlAEFkb2JlIEltYWdlUmVhZHlxyWU8AAADaGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS4zLWMwMTEgNjYuMTQ1NjYxLCAyMDEyLzAyLzA2LTE0OjU2OjI3ICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtbG5zOnhtcD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLyIgeG1wTU06T3JpZ2luYWxEb2N1bWVudElEPSJ4bXAuZGlkOkYwNkM3Q0JCMDgyMDY4MTE4MjJBQ0JGRjJDRTY4NDcxIiB4bXBNTTpEb2N1bWVudElEPSJ4bXAuZGlkOkEwRDE2OEQ2NDMwNzExRTdBODcyRjc5QTk5RDNGRkUyIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOkEwRDE2OEQ1NDMwNzExRTdBODcyRjc5QTk5RDNGRkUyIiB4bXA6Q3JlYXRvclRvb2w9IkFkb2JlIFBob3Rvc2hvcCBDUzYgKE1hY2ludG9zaCkiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDpFNDdGRDBEODRBMjA2ODExODIyQUNCRkYyQ0U2ODQ3MSIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRp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"
+
+  using_template   = true
+  template_name    = "Mixpanel"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://mixpanel.com/security/sso/login/<Customer_ID>/"
+    audience          = "mixpanel"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "SP_IDP"
+    sp_initiated_only = false
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_mixpanel_mixpanel_com,
+    citrixspa_routing_domain.rd_mixpanel_customer_fqdn,
+  ]
+}

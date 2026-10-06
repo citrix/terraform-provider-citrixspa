@@ -1,0 +1,56 @@
+# Panopta — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_panopta_my_panopta_com" {
+  fqdn         = "my.panopta.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "Panopta"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_panopta_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "Panopta"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_panopta" {
+  name         = "Panopta"
+  type         = "saas"
+  state        = "complete"
+  description  = "Monitor server, application and network performance on both sides of your firewall using all three dimensions of Panopta's monitoring methodology."
+  url          = "https://my.panopta.com/"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "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"
+
+  using_template   = true
+  template_name    = "Panopta"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://my.panopta.com/sso/<customer_domain>/acs"
+    audience          = "https://my.panopta.com/sso/<customer_domain>/metadata"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "SP_IDP"
+    sp_initiated_only = false
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_panopta_my_panopta_com,
+    citrixspa_routing_domain.rd_panopta_customer_fqdn,
+  ]
+}

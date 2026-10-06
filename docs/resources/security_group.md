@@ -71,18 +71,18 @@ resource "citrixspa_security_group" "restricted_clipboard" {
 <a id="nestedatt--system"></a>
 ### Nested Schema for `system`
 
-Required:
+Optional:
 
-- `data_in` (String) Whether data can be pasted into the session from the system clipboard. Valid values: `"enabled"`, `"disabled"`.
-- `data_out` (String) Whether data can be copied out of the session to the system clipboard. Valid values: `"enabled"`, `"disabled"`.
+- `data_in` (String) Whether data can be pasted into the session from the system clipboard. Valid values: `"enabled"`, `"disabled"`. Optional; defaults to `"disabled"` when omitted.
+- `data_out` (String) Whether data can be copied out of the session to the system clipboard. Valid values: `"enabled"`, `"disabled"`. Optional; defaults to `"disabled"` when omitted.
 
 <a id="nestedatt--unpublished_app"></a>
 ### Nested Schema for `unpublished_app`
 
-Required:
+Optional:
 
-- `data_in` (String) Whether data can be pasted into the session from unpublished applications. Valid values: `"enabled"`, `"disabled"`.
-- `data_out` (String) Whether data can be copied out of the session to unpublished applications. Valid values: `"enabled"`, `"disabled"`.
+- `data_in` (String) Whether data can be pasted into the session from unpublished applications. Valid values: `"enabled"`, `"disabled"`. Optional; defaults to `"disabled"` when omitted.
+- `data_out` (String) Whether data can be copied out of the session to unpublished applications. Valid values: `"enabled"`, `"disabled"`. Optional; defaults to `"disabled"` when omitted.
 
 ## Import
 

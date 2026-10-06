@@ -175,11 +175,6 @@ func (d *AccessPoliciesDataSource) Schema(ctx context.Context, req datasource.Sc
 													MarkdownDescription: "Platform filter (PLATFORM_FILTER_MOBILE, PLATFORM_FILTER_PC, PLATFORM_FILTER_ANY)",
 													Computed:            true,
 												},
-												"user_and_groups": schema.MapAttribute{
-													MarkdownDescription: "User and groups configuration",
-													Computed:            true,
-													ElementType:         types.StringType,
-												},
 											},
 										},
 									},
@@ -383,22 +378,11 @@ func (d *AccessPoliciesDataSource) Read(ctx context.Context, req datasource.Read
 					"rule_name":        rule.Name,
 					"condition_index":  condIdx,
 					"platform_filter":  condition.PlatformFilter,
-					"user_and_groups":  condition.UserAndGroups,
 					"condition_struct": fmt.Sprintf("%+v", condition),
 				})
 
-				userAndGroupsMap := make(map[string]attr.Value)
-				if condition.UserAndGroups != nil {
-					for k, v := range condition.UserAndGroups {
-						userAndGroupsMap[k] = types.StringValue(fmt.Sprintf("%v", v))
-					}
-				}
-				userAndGroups, diags := types.MapValue(types.StringType, userAndGroupsMap)
-				resp.Diagnostics.Append(diags...)
-
 				conditions = append(conditions, ConditionDataSourceModel{
 					PlatformFilter: types.StringValue(condition.PlatformFilter),
-					UserAndGroups:  userAndGroups,
 				})
 			}
 			accessRule.Conditions = conditions
@@ -453,12 +437,16 @@ func (d *AccessPoliciesDataSource) Read(ctx context.Context, req datasource.Read
 			accessRules = append(accessRules, accessRule)
 		}
 
+		policyPriority := int64(0)
+		if policy.Priority != nil {
+			policyPriority = int64(*policy.Priority)
+		}
 		policyModel := AccessPolicyListDataSourceModel{
 			ID:          types.StringValue(policy.ID),
 			Name:        types.StringValue(policy.Name),
 			Description: types.StringValue(policy.Description),
 			Active:      types.BoolValue(policy.Active),
-			Priority:    types.Int64Value(int64(policy.Priority)),
+			Priority:    types.Int64Value(policyPriority),
 			Modified:    types.StringValue(policy.Modified),
 			Apps:        apps,
 			AccessRules: accessRules,

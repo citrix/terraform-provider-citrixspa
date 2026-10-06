@@ -543,7 +543,7 @@ func testAccCheckSessionPolicyDestroy(s *terraform.State) error {
 		if err == nil {
 			return fmt.Errorf("session policy %s still exists in the API after destroy", id)
 		}
-		if !strings.Contains(err.Error(), "404") {
+		if !IsNotFound(err) {
 			return fmt.Errorf("unexpected error checking session policy %s: %s", id, err)
 		}
 	}

@@ -1,0 +1,56 @@
+# WaveMaker — SPA saas application template
+# Source: SPA SaaS app catalog (internal), sourced 2026-09-17.
+# Replace <placeholder> values (URLs, related URLs) before running terraform apply.
+
+resource "citrixspa_routing_domain" "rd_wavemaker_www_wavemakeronline_com" {
+  fqdn         = "www.wavemakeronline.com"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "WaveMaker"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_routing_domain" "rd_wavemaker_customer_fqdn" {
+  fqdn         = "<Customer FQDN>"
+  type         = "external"
+  app_type     = "saas"
+  flag         = "enabled"
+  comment      = "WaveMaker"
+  ip           = false
+  location_ids = []
+}
+
+resource "citrixspa_application" "app_wavemaker" {
+  name         = "WaveMaker"
+  type         = "saas"
+  state        = "complete"
+  description  = "Software for building and running custom apps."
+  url          = "https://www.wavemakeronline.com/<customer_id>/<customer_domain>"
+  related_urls = ["<Customer FQDN>"]
+  icon         = "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"
+
+  using_template   = true
+  template_name    = "WaveMaker"
+  hidden           = false
+  agentless_access = false
+  mobile_security  = false
+  sbs_only_launch  = false
+
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://www.wavemakeronline.com/studio/services/saml/SSO"
+    audience          = "https://www.wavemakeronline.com/<customer_id>/<customer_domain>/saml/metadata"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "email"
+    name_id_format    = "emailAddress"
+    saml_type         = "SP_IDP"
+    sp_initiated_only = false
+  }
+
+  depends_on = [
+    citrixspa_routing_domain.rd_wavemaker_www_wavemakeronline_com,
+    citrixspa_routing_domain.rd_wavemaker_customer_fqdn,
+  ]
+}

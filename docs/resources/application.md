@@ -10,6 +10,8 @@ Resource for creating and managing SPA applications. Supports web, SaaS, and ZTN
 
 For more details on the underlying API, see the [Applications API documentation](https://developer-docs.citrix.com/en-us/secure-private-access/access-security/handling-applications).
 
+-> **Tip** Ready-to-adapt templates covering the full SPA SaaS app catalog (one file per vendor, grouped by SSO type under `saml/` and `form/`) are available in the [`templates/`](../../templates/README.md) directory. Each file defines a `citrixspa_application` together with the `citrixspa_routing_domain` resources it needs.
+
 ~> **Note** Application names should be unique within an account.
 
 Applications can be created in an `incomplete` state and later transitioned to `complete` by setting the `state` attribute to `"complete"`.
@@ -34,6 +36,19 @@ resource "citrixspa_application" "my_web_application" {
 ```
 
 -> **Note** When using the migration script (`spa_manager.ps1`), dependency ordering is handled automatically.
+
+#### Deleting an application also deletes matching routing domains
+
+The dependency runs in both directions. When an application is deleted, Citrix Secure Private Access also deletes the routing domains whose `fqdn` matches one of that application's `url` or `related_urls` (each reduced to its hostname) or `destination` values — unless another live application still references the same FQDN. The match is made on the FQDN string alone, so a routing domain created independently is removed too. The full rule is documented as [Note 3 on the `citrixspa_routing_domain` page](routing_domain.md).
+
+`terraform destroy` of a configuration that declares both is unaffected: `depends_on` destroys the application first, and the routing domain's own delete then succeeds against an already-removed backend entry. Drift appears in two other situations:
+
+- **The application is removed from the configuration while a `citrixspa_routing_domain` for one of its FQDNs is kept.** The backend deletes that routing domain. On the next `terraform plan`, the refresh finds it missing, warns, and plans to create it again; the state file itself is corrected on the following `terraform apply`.
+- **The application and the routing domains are managed in separate configurations or state files.** The same thing happens, but the team that owns the routing-domain configuration sees unexplained drift without having changed anything. If the two are managed separately, coordinate application deletions with that owner.
+
+In both cases `terraform state rm` is not required. If the routing domain is no longer needed, remove its resource block from the configuration; if it is still required, the next `terraform apply` recreates it.
+
+When two applications share an FQDN and only one is deleted, the routing domain is retained and there is no drift. The provider still warns on the delete, because it cannot see the account's other applications.
 
 ### Field Requirements by Application Type
 
@@ -121,6 +136,8 @@ resource "citrixspa_application" "ztna_app" {
 
 ### SaaS Application
 
+-> **Note** This example sets `using_template = true`, which provisions the application from a template in the SPA service's built-in application catalog (maintained on the backend) selected by `template_name`. You can still supply `sso`, `icon`, and `related_urls` in the same configuration; they are applied on top of the catalog template, so the app is created fully configured in a single apply. Ready-to-adapt per-vendor examples are in the [`templates/`](../../templates/README.md) directory.
+
 ```terraform
 resource "citrixspa_application" "saas_app" {
   name        = "Office 365"
@@ -144,7 +161,16 @@ resource "citrixspa_application" "saas_app" {
   agentless_access = false
   mobile_security  = false
 
-  sso = { type = "nosso" }
+  sso = {
+    type              = "saml"
+    assertion_url     = "https://login.microsoftonline.com/login.srf"
+    audience          = "urn:federation:MicrosoftOnline"
+    sign_assertion    = "ASSERTION"
+    name_id_source    = "guid_b64"
+    name_id_format    = "persistent"
+    saml_type         = "SP_IDP"
+    sp_initiated_only = false
+  }
 
   locations = [
     {
@@ -225,8 +251,8 @@ resource "citrixspa_application" "saml_app" {
 - `mobile_security` (Boolean) Enable mobile security for the application.
 - `url` (String) Application URL. Required for `web` and `saas` applications; must include the `https://` scheme. Not used for `ztna` applications.
 - `related_urls` (Set of String) Related URLs for the application. Required for `web` and `saas` applications; must not include `https://` or trailing slashes (e.g., `"example.com"`). Not used for `ztna` applications.
-- `using_template` (Boolean) Whether the application uses a template. Required for `web` and `saas` applications.
-- `template_name` (String) Name of the template to use.
+- `using_template` (Boolean) When `true`, the application is provisioned from a template in the SPA service's built-in application catalog, which is maintained on the backend and selected via `template_name`. Any `sso`, `icon`, and `related_urls` you supply are applied on top of the catalog template, so the application can be created fully configured in a single apply. This is unrelated to the reusable configuration files in the provider's `templates/` directory. This flag is owned and normalized by the SPA Console on save, so it can be omitted and the Console-assigned value is adopted into state without producing drift. Optional; defaults to `false`.
+- `template_name` (String) Name of the template to use from the SPA service's built-in application catalog (backend). Applies only when `using_template` is `true`.
 - `keywords` (Set of String) Keywords associated with the application.
 - `locations` (Attributes List) Resource locations associated with the application. (see [below for nested schema](#nestedatt--locations))
 - `destination` (Attributes List) Destinations for ZTNA applications. Required for `ztna` applications. (see [below for nested schema](#nestedatt--destination))

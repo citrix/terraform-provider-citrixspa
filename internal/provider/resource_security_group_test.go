@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
@@ -102,7 +105,7 @@ func testAccCheckSecurityGroupDestroy(s *terraform.State) error {
 		if err == nil {
 			return fmt.Errorf("security group %s still exists in the API after destroy", id)
 		}
-		if !strings.Contains(err.Error(), "404") {
+		if !IsNotFound(err) {
 			return fmt.Errorf("unexpected error checking security group %s: %s", id, err)
 		}
 	}
@@ -320,4 +323,81 @@ func TestAccSecurityGroup_updateApps(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestSecurityGroupDataFlowDefault is a unit test (runs under `go test ./...`
+// without TF_ACC) verifying that the optional data_in/data_out fields default to
+// "disabled" when null, unknown, or empty, and pass configured values through.
+// The SPAConfig serializer treats configurationSettings.dataIn/dataOut as
+// required=False with a default of "disabled".
+func TestSecurityGroupDataFlowDefault(t *testing.T) {
+	tests := []struct {
+		name string
+		in   types.String
+		want string
+	}{
+		{"null defaults to disabled", types.StringNull(), "disabled"},
+		{"unknown defaults to disabled", types.StringUnknown(), "disabled"},
+		{"empty defaults to disabled", types.StringValue(""), "disabled"},
+		{"enabled passes through", types.StringValue("enabled"), "enabled"},
+		{"disabled passes through", types.StringValue("disabled"), "disabled"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := dataFlowOrDefault(tt.in); got != tt.want {
+				t.Errorf("dataFlowOrDefault(%v) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+
+	// configSettingsToObject should produce a known object with the resolved values.
+	obj := configSettingsToObject(ConfigurationSettings{DataIn: "disabled", DataOut: "enabled"})
+	if obj.IsNull() || obj.IsUnknown() {
+		t.Fatalf("expected a known object, got null=%v unknown=%v", obj.IsNull(), obj.IsUnknown())
+	}
+	var cfg ConfigurationSettingsModel
+	if diags := obj.As(context.Background(), &cfg, basetypes.ObjectAsOptions{}); diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags.Errors())
+	}
+	if cfg.DataIn.ValueString() != "disabled" || cfg.DataOut.ValueString() != "enabled" {
+		t.Errorf("configSettingsToObject mismatch: got in=%q out=%q", cfg.DataIn.ValueString(), cfg.DataOut.ValueString())
+	}
+}
+
+// TestConfigSettingsFromObject verifies that the shared decode helper resolves a
+// system/unpublished_app object into ConfigurationSettings, defaulting omitted
+// (null) attributes and a fully-null object to "disabled", and passing configured
+// values through unchanged.
+func TestConfigSettingsFromObject(t *testing.T) {
+	ctx := context.Background()
+
+	// Empty block (`system = {}`): both attributes null => both default to disabled.
+	emptyBlock := types.ObjectValueMust(configSettingsAttrTypes, map[string]attr.Value{
+		"data_in":  types.StringNull(),
+		"data_out": types.StringNull(),
+	})
+	if got, diags := configSettingsFromObject(ctx, emptyBlock); diags.HasError() {
+		t.Fatalf("unexpected diagnostics for empty block: %v", diags.Errors())
+	} else if got.DataIn != "disabled" || got.DataOut != "disabled" {
+		t.Errorf("empty block: got in=%q out=%q, want disabled/disabled", got.DataIn, got.DataOut)
+	}
+
+	// Fully-null object: defaults to disabled/disabled without error.
+	nullObj := types.ObjectNull(configSettingsAttrTypes)
+	if got, diags := configSettingsFromObject(ctx, nullObj); diags.HasError() {
+		t.Fatalf("unexpected diagnostics for null object: %v", diags.Errors())
+	} else if got.DataIn != "disabled" || got.DataOut != "disabled" {
+		t.Errorf("null object: got in=%q out=%q, want disabled/disabled", got.DataIn, got.DataOut)
+	}
+
+	// Configured values pass through unchanged.
+	setObj := types.ObjectValueMust(configSettingsAttrTypes, map[string]attr.Value{
+		"data_in":  types.StringValue("enabled"),
+		"data_out": types.StringValue("disabled"),
+	})
+	if got, diags := configSettingsFromObject(ctx, setObj); diags.HasError() {
+		t.Fatalf("unexpected diagnostics for set object: %v", diags.Errors())
+	} else if got.DataIn != "enabled" || got.DataOut != "disabled" {
+		t.Errorf("set object: got in=%q out=%q, want enabled/disabled", got.DataIn, got.DataOut)
+	}
 }

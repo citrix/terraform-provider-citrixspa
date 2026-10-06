@@ -1,0 +1,600 @@
+{
+  "_comment": [
+    "Synthetic $script:ResourceData for the -ExtractLocals golden-file test.",
+    "Deliberately repetitive: two resource locations spread across routing domains,",
+    "applications and a domain override; two identities reused across several",
+    "policies and the session policy. Also carries the cases that MUST NOT be",
+    "collapsed, so the literal fallback stays covered:",
+    "  ap-everyone         values=[\"Everyone\"], no metadata",
+    "  ap-order-mismatch   metadata tokens present but out of order in values[]",
+    "  ap-partial          an extra value[] entry no metadata key accounts for",
+    "  rd-conflicting-name same uuid reported under two different names",
+    "  ap-name-case-a/b   two identities whose display names differ only in case",
+    "  ap-hcl-keyword     a display name that sanitises to the HCL keyword `for`",
+    "  rd/app DC North    same uuid under a case-only rename -> conflict, stays inline",
+    "  sp-empty-token     a token list with an empty member -> stays inline",
+    "  ap-tag-sigil        tag_source/tag_key carrying ${ and %{ -> non-list scalar sink",
+    "  terminate_*         machine/user fields carrying ${ and %{ -> non-list scalar sinks",
+    "  sg-sigil            security-group system/unpublished_app scalars -> non-list sink",
+    "  browser_mode        a scalar written straight into optional_fields",
+    "  rd orphan           a location referenced exactly once -> below the repeat threshold, stays inline",
+    "  rd nameless-a/b     a uuid only routing domains report, but twice -> nameless loc_<uuid> entry",
+    "  app-0009            a NAMED location referenced once -> also below the threshold, stays inline"
+  ],
+  "routing_domains": {
+    "routing_domains": [
+      {
+        "fqdn": "east.example.com",
+        "name": "east",
+        "type": "TYPE_DOMAIN",
+        "location_ids": [
+          "11111111-1111-1111-1111-000000000001"
+        ]
+      },
+      {
+        "fqdn": "west.example.com",
+        "name": "west",
+        "type": "TYPE_DOMAIN",
+        "location_ids": [
+          "11111111-1111-1111-1111-000000000002"
+        ]
+      },
+      {
+        "fqdn": "both.example.com",
+        "name": "both",
+        "type": "TYPE_DOMAIN",
+        "location_ids": [
+          "11111111-1111-1111-1111-000000000001",
+          "11111111-1111-1111-1111-000000000002"
+        ]
+      },
+      {
+        "fqdn": "none.example.com",
+        "name": "none",
+        "type": "TYPE_DOMAIN",
+        "location_ids": []
+      },
+      {
+        "fqdn": "orphan.example.com",
+        "name": "orphan",
+        "type": "TYPE_DOMAIN",
+        "location_ids": [
+          "11111111-1111-1111-1111-00000000000f"
+        ]
+      },
+      {
+        "fqdn": "nameless-a.example.com",
+        "name": "nameless-a",
+        "type": "TYPE_DOMAIN",
+        "location_ids": [
+          "11111111-1111-1111-1111-00000000000e"
+        ]
+      },
+      {
+        "fqdn": "nameless-b.example.com",
+        "name": "nameless-b",
+        "type": "TYPE_DOMAIN",
+        "location_ids": [
+          "11111111-1111-1111-1111-00000000000e"
+        ]
+      },
+      {
+        "fqdn": "mixedcase.example.com",
+        "name": "mixedcase",
+        "type": "TYPE_DOMAIN",
+        "location_ids": [
+          "AAAA1111-1111-1111-1111-00000000000A"
+        ]
+      }
+    ]
+  },
+  "applications": {
+    "applications": [
+      {
+        "id": "app-0001",
+        "name": "Golden Web App",
+        "type": "TYPE_WEB",
+        "locations": [
+          {
+            "name": "DC East",
+            "uuid": "11111111-1111-1111-1111-000000000001"
+          }
+        ]
+      },
+      {
+        "id": "app-0002",
+        "name": "Golden SaaS App",
+        "type": "TYPE_SAAS",
+        "locations": [
+          {
+            "name": "DC East",
+            "uuid": "11111111-1111-1111-1111-000000000001"
+          },
+          {
+            "name": "DC West",
+            "uuid": "11111111-1111-1111-1111-000000000002"
+          }
+        ]
+      },
+      {
+        "id": "app-0003",
+        "name": "Conflicting Name App",
+        "type": "TYPE_WEB",
+        "locations": [
+          {
+            "name": "DC South",
+            "uuid": "11111111-1111-1111-1111-000000000003"
+          }
+        ]
+      },
+      {
+        "id": "app-0004",
+        "name": "Conflicting Name App Two",
+        "type": "TYPE_WEB",
+        "locations": [
+          {
+            "name": "DC South Renamed",
+            "uuid": "11111111-1111-1111-1111-000000000003"
+          }
+        ]
+      },
+      {
+        "id": "app-0005",
+        "name": "Case Rename App",
+        "type": "TYPE_WEB",
+        "locations": [
+          {
+            "name": "DC North",
+            "uuid": "11111111-1111-1111-1111-000000000004"
+          }
+        ]
+      },
+      {
+        "id": "app-0006",
+        "name": "Case Rename App Two",
+        "type": "TYPE_WEB",
+        "locations": [
+          {
+            "name": "DC NORTH",
+            "uuid": "11111111-1111-1111-1111-000000000004"
+          }
+        ]
+      },
+      {
+        "id": "app-0007",
+        "name": "Mixed Case Uuid App",
+        "type": "TYPE_WEB",
+        "locations": [
+          {
+            "name": "DC Mixed",
+            "uuid": "aaaa1111-1111-1111-1111-00000000000a"
+          }
+        ]
+      },
+      {
+        "id": "app-0009",
+        "name": "Singleton Location App",
+        "type": "TYPE_WEB",
+        "locations": [
+          {
+            "name": "DC Solo",
+            "uuid": "11111111-1111-1111-1111-00000000000d"
+          }
+        ]
+      }
+    ]
+  },
+  "access_policies": {
+    "access_policies": [
+      {
+        "id": "ap-alice-1",
+        "name": "Alice Policy One",
+        "active": true,
+        "priority": 1,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "advanced_settings": {
+              "domain_overrides": [
+                {
+                  "fqdn": "east.example.com",
+                  "type": "TYPE_DOMAIN",
+                  "location_ids": [
+                    "11111111-1111-1111-1111-000000000001"
+                  ]
+                }
+              ]
+            },
+            "rules": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "OID:/azuread/00000000-0000-0000-0000-000000000001",
+                  "SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001"
+                ],
+                "metadata": {
+                  "Alice Smith": "OID:/azuread/00000000-0000-0000-0000-000000000001,SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-alice-2",
+        "name": "Alice Policy Two",
+        "active": true,
+        "priority": 2,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "rules": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "OID:/azuread/00000000-0000-0000-0000-000000000001",
+                  "SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001"
+                ],
+                "metadata": {
+                  "Alice Smith": "OID:/azuread/00000000-0000-0000-0000-000000000001,SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-two-identities",
+        "name": "Alice And Bob Policy",
+        "active": true,
+        "priority": 3,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "rules": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "OID:/azuread/00000000-0000-0000-0000-000000000001",
+                  "SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001",
+                  "OID:/azuread/00000000-0000-0000-0000-000000000002"
+                ],
+                "metadata": {
+                  "Alice Smith": "OID:/azuread/00000000-0000-0000-0000-000000000001,SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001",
+                  "Bob Jones": "OID:/azuread/00000000-0000-0000-0000-000000000002"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-everyone",
+        "name": "Everyone Policy",
+        "active": true,
+        "priority": 4,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "rules": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "Everyone",
+                  "GRP:/corp/${1 + 1}"
+                ],
+                "metadata": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-order-mismatch",
+        "name": "Order Mismatch Policy",
+        "active": true,
+        "priority": 5,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "rules": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001",
+                  "OID:/azuread/00000000-0000-0000-0000-000000000001"
+                ],
+                "metadata": {
+                  "Alice Smith": "OID:/azuread/00000000-0000-0000-0000-000000000001,SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-partial",
+        "name": "Partial Metadata Policy",
+        "active": true,
+        "priority": 6,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "rules": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "OID:/azuread/00000000-0000-0000-0000-000000000002",
+                  "EMAIL:/e2e/unlisted@example.com"
+                ],
+                "metadata": {
+                  "Bob Jones": "OID:/azuread/00000000-0000-0000-0000-000000000002"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-condition-pc",
+        "name": "Condition Platform Pc Policy",
+        "active": true,
+        "priority": 7,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "conditions": [
+              {
+                "platform_filter": "PLATFORM_FILTER_PC"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-condition-empty",
+        "name": "Condition Empty Platform Policy",
+        "active": true,
+        "priority": 8,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "conditions": [
+              {
+                "platform_filter": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-condition-mac",
+        "name": "Condition Platform Mac Policy",
+        "active": true,
+        "priority": 9,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "conditions": [
+              {
+                "platform_filter": "PLATFORM_FILTER_MAC"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-name-case-a",
+        "name": "Name Case Policy A",
+        "active": true,
+        "priority": 10,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "rules": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "OID:/azuread/aaaaaaaa-0000-0000-0000-00000000000a"
+                ],
+                "metadata": {
+                  "Sales Team": "OID:/azuread/aaaaaaaa-0000-0000-0000-00000000000a"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-name-case-b",
+        "name": "Name Case Policy B",
+        "active": true,
+        "priority": 11,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "rules": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "OID:/azuread/aaaaaaaa-0000-0000-0000-00000000000a"
+                ],
+                "metadata": {
+                  "SALES TEAM": "OID:/azuread/aaaaaaaa-0000-0000-0000-00000000000a"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-hcl-keyword",
+        "name": "Hcl Keyword Policy",
+        "active": true,
+        "priority": 12,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "rules": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "OID:/azuread/cccccccc-0000-0000-0000-00000000000c"
+                ],
+                "metadata": {
+                  "for": "OID:/azuread/cccccccc-0000-0000-0000-00000000000c"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ap-tag-sigil",
+        "name": "Tag Sigil Policy",
+        "active": true,
+        "priority": 13,
+        "access_rules": [
+          {
+            "name": "rule-1",
+            "action": "ACTION_ALLOW",
+            "rules": [
+              {
+                "type": "TYPE_DEVICE_POSTURE",
+                "operator": "OPERATOR_IN",
+                "tag_source": "posture/${1 + 1}",
+                "tag_key": "%{if true}pwn%{endif}",
+                "values": [
+                  "compliant"
+                ],
+                "metadata": {}
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "session_policies": {
+    "session_policies": [
+      {
+        "id": "sp-0001",
+        "name": "Golden Session Policy",
+        "active": true,
+        "priority": 1,
+        "generic_rules": [
+          {
+            "name": "session-rule-1",
+            "condition": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "OID:/azuread/00000000-0000-0000-0000-000000000001",
+                  "SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001"
+                ],
+                "metadata": {
+                  "Alice Smith": "OID:/azuread/00000000-0000-0000-0000-000000000001,SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sp-0002",
+        "name": "Empty Token Session Policy",
+        "active": true,
+        "priority": 2,
+        "generic_rules": [
+          {
+            "name": "session-rule-1",
+            "condition": [
+              {
+                "type": "TYPE_USERGROUP",
+                "operator": "OPERATOR_IN",
+                "values": [
+                  "OID:/azuread/%{if true}pwn%{endif}",
+                  ""
+                ],
+                "metadata": {
+                  "Empty Token Grp": "OID:/azuread/bbbbbbbb-0000-0000-0000-00000000000b,"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "security_groups": {
+    "security_groups": [
+      {
+        "id": "sg-0001",
+        "name": "Sigil ${Group}",
+        "app_ids": [
+          "app-0001"
+        ],
+        "system": {
+          "data_in": "enabled",
+          "data_out": "%{if true}disabled%{endif}"
+        },
+        "unpublished_app": {
+          "data_in": "${var.leak}",
+          "data_out": "disabled"
+        }
+      }
+    ]
+  },
+  "browser_mode": {
+    "browser_mode": "embedded-${1 + 1}"
+  },
+  "terminate_machine_access": {
+    "machines": [
+      {
+        "id": "tma-0001",
+        "account_name": "svc-${1 + 1}",
+        "name": "Sigil Machine %{if true}pwn%{endif}",
+        "dns_host_name": "host-${1 + 1}.example.com",
+        "domain_name": "example.com",
+        "object_id": "S-1-5-21-${1 + 1}",
+        "idp_type": "IDP_AZURE_AD",
+        "duration": 3600
+      }
+    ]
+  },
+  "terminate_user_access": {
+    "users": [
+      {
+        "id": "tua-0001",
+        "account_name": "alice-%{if true}pwn%{endif}",
+        "email": "alice+${1 + 1}@example.com",
+        "domain_name": "example.com",
+        "object_id": "00000000-0000-0000-0000-${1 + 1}",
+        "idp_type": "IDP_AZURE_AD",
+        "duration": 1800
+      }
+    ]
+  }
+}

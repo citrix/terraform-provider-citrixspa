@@ -9,6 +9,7 @@ This tool discovers resources from the SPA service provider and generates Terraf
 - **Terraform Generation**: Creates ready-to-use Terraform configuration files
 - **Clean Resource Blocks**: Automatically excludes read-only fields (IDs, timestamps, computed values) for cleaner configurations
 - **Import Blocks**: Generates modern Terraform import blocks for configuration-driven imports
+- **Shared Values**: `-ExtractLocals` hoists repeated resource locations and user/group identities into a `locals` block so they can be updated in one place
 - **Configuration Management**: Provides a foundation for managing SPA resources with Terraform
 - **Built-in Validation**: Integrated validation and testing capabilities
 - **Cross-Platform**: PowerShell 7+ implementation works on Windows, macOS, and Linux
@@ -112,9 +113,67 @@ This tool discovers resources from the SPA service provider and generates Terraf
 # Quick discovery using list data only (faster but potentially incomplete field data)
 ./spa_manager.ps1 -List -Quick     # Use -Quick flag to disable individual item queries
 
+# Hoist repeated users and resource locations into a locals block (see below)
+./spa_manager.ps1 -List -ExtractLocals
+
 ./spa_manager.ps1 -DebugOutput     # Enable debug logging
 ./spa_manager.ps1 -VerboseOutput   # Enable verbose output
 ```
+
+#### Shared Values (`-ExtractLocals`)
+
+By default every value is written out literally, so the same resource-location UUID repeats in
+every routing domain and application that uses it, and a user's directory tokens repeat in every
+policy that scopes to them — twice each, once in `values` and again comma-joined in `metadata`.
+Changing one of them means a find-and-replace across the whole file.
+
+`-ExtractLocals` (alias `-el`) collects those repeated values into a `locals` block at the top of
+`spa_resources.tf` and references them from the resource bodies:
+
+```hcl
+locals {
+  resource_locations = {
+    On_Prem_DC1 = {
+      name = "On-Prem DC1"
+      uuid = "11111111-1111-1111-1111-000000000001"
+    }
+  }
+
+  users = {
+    Alice_Smith = {
+      name = "Alice Smith"
+      tokens = [
+        "OID:/azuread/00000000-0000-0000-0000-000000000001",
+        "SID:/example.com/S-1-5-21-1111111111-2222222222-3333333333-1001",
+      ]
+    }
+  }
+
+  # Derived: do not edit — change `users` above instead.
+  user_metadata = { for k, u in local.users : k => { (u.name) = join(",", u.tokens) } }
+}
+
+resource "citrixspa_routing_domain" "east" {
+  location_ids = [local.resource_locations.On_Prem_DC1.uuid]
+}
+```
+
+Rules referencing several identities use `concat(...)` / `merge(...)`. Because `user_metadata` is
+derived from `users`, editing a user's tokens updates `values` and `metadata` together — they
+cannot drift apart, which is the failure that breaks the SPA Console policy edit page.
+
+The rewrite is plan-neutral: the generated config produces the same `terraform plan` as without the
+flag. Anything the tool cannot prove it can reproduce exactly is left literal, so expect some rules
+to stay inline — for example `values = ["Everyone"]`, rules with no `metadata`, rules whose tokens
+do not appear in `values` contiguously and in order, and a resource-location UUID reported under
+two different names or in two different letter cases (the tool warns for each one it leaves inline).
+
+Only values used in **more than one place** are hoisted. A resource location referenced exactly
+once stays inline — there is no second site an edit would have to reach, so a locals entry plus a
+reference would be longer than the literal it replaced. This is expected output, not a fallback,
+and the tool does not warn about it. A resource location the API only ever reports through a
+routing domain has no name, so its entry carries just a `uuid` and is keyed `loc_<uuid>`;
+applications, which need the name and UUID together, keep such a location inline.
 
 #### Enhanced vs Quick Mode
 
@@ -145,7 +204,9 @@ Get-Help ./spa_manager.ps1    # Show usage information
 
 After running the tool, you'll get:
 
-- **`spa_resources.tf`**: Complete Terraform configuration with resource definitions
+- **`spa_resources.tf`**: Complete Terraform configuration with resource definitions. With
+  `-ExtractLocals`, it opens with a `locals` block holding the shared resource locations and
+  user/group identities that the resources below reference.
 - **`imports.tf`**: Modern Terraform import blocks for configuration-driven imports
 
 ### Example Files

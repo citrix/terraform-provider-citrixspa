@@ -127,63 +127,170 @@ fi
 
 # Clean any state/generated files from a previous run — leftovers cause
 # spa_manager to short-circuit discovery and emit an empty config.
-info "Cleaning tool directory before discovery..."
-rm -f "${TOOL_DIR}/spa_resources.tf" "${TOOL_DIR}/imports.tf" "${TOOL_DIR}/provider.tf" \
-      "${TOOL_DIR}/management_summary.md" "${TOOL_DIR}/terraform.tfstate" \
-      "${TOOL_DIR}/terraform.tfstate.backup" "${TOOL_DIR}/.terraform.lock.hcl" "${TOOL_DIR}/tfplan"
-rm -rf "${TOOL_DIR}/.terraform"
+clean_tool_dir() {
+  rm -f "${TOOL_DIR}/spa_resources.tf" "${TOOL_DIR}/imports.tf" "${TOOL_DIR}/provider.tf" \
+        "${TOOL_DIR}/management_summary.md" "${TOOL_DIR}/terraform.tfstate" \
+        "${TOOL_DIR}/terraform.tfstate.backup" "${TOOL_DIR}/.terraform.lock.hcl" "${TOOL_DIR}/tfplan"
+  rm -rf "${TOOL_DIR}/.terraform"
+}
 
-( cd "${TOOL_DIR}" && TF_CLI_CONFIG_FILE="${TERRAFORMRC}" pwsh ./spa_manager.ps1 -List ) \
-  || { error "spa_manager.ps1 -List failed"; exit 1; }
-
-if [ ! -f "${TOOL_DIR}/spa_resources.tf" ]; then
-  error "spa_manager.ps1 did not generate spa_resources.tf"
-  exit 1
-fi
-
-# --- assert the generated config reproduces reality (no drift) ----------------
-# The generated config ships import blocks, so a first plan legitimately shows
+# discover_and_plan <label> <plan_file> [extra spa_manager args...]
+#
+# One full discovery cycle: clean, generate, init, plan, assert the plan is
+# clean. Leaves the plan text in <plan_file> and the generated spa_resources.tf
+# in place for the caller to inspect.
+#
+# The generated config ships import blocks, so the plan legitimately shows
 # "N to import". Discovery is accurate when that plan has 0 add/change/destroy —
 # every resource matches live state and only needs importing. (We therefore do
 # NOT use -detailed-exitcode, which treats imports as changes.)
-info "Planning against generated config (expecting 0 add/change/destroy)..."
-( cd "${TOOL_DIR}" && TF_CLI_CONFIG_FILE="${TERRAFORMRC}" terraform init -reconfigure -input=false ) \
-  || { error "terraform init against generated config failed"; exit 1; }
+discover_and_plan() {
+  local label="$1" plan_file="$2"
+  shift 2
 
-plan_out="$(mktemp)"
-( cd "${TOOL_DIR}" && TF_CLI_CONFIG_FILE="${TERRAFORMRC}" terraform plan -input=false -no-color ) > "${plan_out}" 2>&1
-plan_rc=$?
-cat "${plan_out}"
-if [ "${plan_rc}" -ne 0 ]; then
-  error "terraform plan errored (exit ${plan_rc})."
+  info "[${label}] Cleaning tool directory before discovery..."
+  clean_tool_dir
+
+  info "[${label}] Running spa_manager.ps1 -List $*..."
+  ( cd "${TOOL_DIR}" && TF_CLI_CONFIG_FILE="${TERRAFORMRC}" pwsh ./spa_manager.ps1 -List "$@" ) \
+    || { error "[${label}] spa_manager.ps1 -List $* failed"; return 1; }
+
+  if [ ! -f "${TOOL_DIR}/spa_resources.tf" ]; then
+    error "[${label}] spa_manager.ps1 did not generate spa_resources.tf"
+    return 1
+  fi
+
+  info "[${label}] Planning against generated config (expecting 0 add/change/destroy)..."
+  ( cd "${TOOL_DIR}" && TF_CLI_CONFIG_FILE="${TERRAFORMRC}" terraform init -reconfigure -input=false ) \
+    || { error "[${label}] terraform init against generated config failed"; return 1; }
+
+  ( cd "${TOOL_DIR}" && TF_CLI_CONFIG_FILE="${TERRAFORMRC}" terraform plan -input=false -no-color ) > "${plan_file}" 2>&1
+  local plan_rc=$?
+  cat "${plan_file}"
+  if [ "${plan_rc}" -ne 0 ]; then
+    error "[${label}] terraform plan errored (exit ${plan_rc})."
+    return 1
+  fi
+
+  local summary add change destroy imports
+  summary="$(grep -E '^(Plan:|No changes)' "${plan_file}" | tail -1)"
+  get_count() { echo "${summary}" | grep -oE "[0-9]+ to $1" | grep -oE '[0-9]+' | head -1; }
+  add="$(get_count add)";         add="${add:-0}"
+  change="$(get_count change)";   change="${change:-0}"
+  destroy="$(get_count destroy)"; destroy="${destroy:-0}"
+  imports="$(get_count import)";  imports="${imports:-0}"
+
+  # Guard against a trivially-clean plan: discovery must have found the golden
+  # resources. Their attribute values retain the "e2e-golden" prefix.
+  local seeded_marker="e2e-golden"
+  if ! grep -q "${seeded_marker}" "${plan_file}"; then
+    error "[${label}] FAILED: discovery did not include the seeded resources ('${seeded_marker}'). Empty/partial discovery?"
+    return 1
+  fi
+  if [ "${imports}" -lt 1 ]; then
+    error "[${label}] FAILED: no import blocks generated — nothing was discovered."
+    return 1
+  fi
+  if [ "${add}" -ne 0 ] || [ "${change}" -ne 0 ] || [ "${destroy}" -ne 0 ]; then
+    error "[${label}] FAILED: generated config shows drift (add=${add} change=${change} destroy=${destroy})."
+    return 1
+  fi
+
+  info "[${label}] PASSED (imports=${imports}, 0 add/change/destroy, seeded resources present)."
+  return 0
+}
+
+# --- pass 1: default literal output -------------------------------------------
+plan_literal="$(mktemp)"
+discover_and_plan "literal" "${plan_literal}" || { rm -f "${plan_literal}"; exit 1; }
+
+# --- pass 2: -ExtractLocals ----------------------------------------------------
+# Same tenant, same assertions, plus proof that the locals actually collapsed
+# something. That extra proof matters because the failure mode of -ExtractLocals
+# is QUIET: if a value stops being catalogued, the emitter falls back to the
+# literal, which is still valid HCL and still plans clean. Only counting the
+# collapse catches it.
+plan_locals="$(mktemp)"
+discover_and_plan "extract-locals" "${plan_locals}" -ExtractLocals \
+  || { rm -f "${plan_literal}" "${plan_locals}"; exit 1; }
+
+generated="${TOOL_DIR}/spa_resources.tf"
+locals_failed=0
+fail_locals() { error "[extract-locals] FAILED: $1"; locals_failed=1; }
+
+# 1. The flag did something at all.
+grep -q '^locals {' "${generated}" || fail_locals "no locals block in the generated config"
+
+# 2. The shared values actually collapsed. These UUIDs and tokens are seeded by
+#    e2e/customer-a/main.tf specifically so there is repetition to remove; see
+#    the "-ExtractLocals tooling pass" locals there. Each UUID is used by
+#    several routing domains/applications, so after collapsing it must appear
+#    exactly once — inside the locals block.
+# Count occurrences, not matching lines: concat()/merge() put two references on
+# a single line, so `grep -c` would undercount them.
+count_occurrences() { grep -o "$1" "$2" | wc -l; }
+
+for uuid in "00000000-0000-0000-0000-0000000000aa" "00000000-0000-0000-0000-0000000000bb"; do
+  n="$(count_occurrences "${uuid}" "${generated}")"
+  [ "${n}" -eq 1 ] || fail_locals "resource location ${uuid} appears ${n} times, expected exactly 1 (inside locals)"
+done
+
+n="$(count_occurrences 'local\.resource_locations\.' "${generated}")"
+[ "${n}" -ge 5 ] || fail_locals "only ${n} local.resource_locations references, expected >= 5"
+
+n="$(count_occurrences 'local\.users\.' "${generated}")"
+[ "${n}" -ge 4 ] || fail_locals "only ${n} local.users references, expected >= 4"
+
+n="$(count_occurrences 'local\.user_metadata\.' "${generated}")"
+[ "${n}" -ge 4 ] || fail_locals "only ${n} local.user_metadata references, expected >= 4"
+
+# The >= bounds above are deliberately loose, and loose enough to hide a real
+# regression: "Golden Shared Group" is seeded into exactly four rules (three
+# access policies plus the session policy) and "Golden Second Group" into one,
+# so if the session-policy emitter stopped collapsing, local.users. would drop
+# from 5 to 4 and still pass. Pin the shared identity's own count exactly.
+# The key is Get-SharedLocalName's sanitisation of the display name; a rename
+# in e2e/customer-a/main.tf has to be mirrored here.
+for prefix in 'local\.users' 'local\.user_metadata'; do
+  n="$(count_occurrences "${prefix}\.Golden_Shared_Group" "${generated}")"
+  [ "${n}" -eq 4 ] || fail_locals "${prefix}.Golden_Shared_Group appears ${n} times, expected exactly 4 (3 access policies + 1 session policy)"
+done
+
+# The two-identity rule is the only shape that produces concat()/merge().
+grep -q 'concat(local\.users\.' "${generated}" || fail_locals "no concat(local.users...) — the two-identity rule did not collapse"
+grep -q 'merge(local\.user_metadata\.' "${generated}" || fail_locals "no merge(local.user_metadata...) — the two-identity rule did not collapse"
+
+# 3. The literal fallback is still intact. `values = ["Everyone"]` carries no
+#    metadata and must never be hoisted; if it is, the extractability rules have
+#    been loosened too far.
+grep -q '"Everyone"' "${generated}" || fail_locals "no literal \"Everyone\" rule left — the fallback path regressed"
+
+# 4. Both passes must produce the same plan. Once the golden tenant is
+#    repetitive, any difference between the literal and refactored plans is a
+#    real bug, not noise.
+#
+#    Terraform refreshes resources concurrently, so the interleaved
+#    "Preparing import... / Refreshing state..." progress lines come out in a
+#    different order on every run — that IS noise, and it is dropped before the
+#    comparison. Everything else (the planned actions and the Plan: summary) is
+#    deterministic and is compared verbatim.
+strip_plan_progress() {
+  grep -vE ': (Preparing import\.\.\.|Refreshing state\.\.\.|Reading\.\.\.|Read complete after )' "$1"
+}
+plan_diff="$(mktemp)"
+strip_plan_progress "${plan_literal}" > "${plan_literal}.norm"
+strip_plan_progress "${plan_locals}"  > "${plan_locals}.norm"
+if ! diff -u "${plan_literal}.norm" "${plan_locals}.norm" > "${plan_diff}" 2>&1; then
+  error "[extract-locals] FAILED: plan differs between the literal and -ExtractLocals passes:"
+  head -60 "${plan_diff}"
+  locals_failed=1
+fi
+
+rm -f "${plan_literal}" "${plan_locals}" "${plan_diff}" \
+      "${plan_literal}.norm" "${plan_locals}.norm"
+
+if [ "${locals_failed}" -ne 0 ]; then
   exit 1
 fi
 
-summary="$(grep -E '^(Plan:|No changes)' "${plan_out}" | tail -1)"
-get_count() { echo "${summary}" | grep -oE "[0-9]+ to $1" | grep -oE '[0-9]+' | head -1; }
-add="$(get_count add)";     add="${add:-0}"
-change="$(get_count change)"; change="${change:-0}"
-destroy="$(get_count destroy)"; destroy="${destroy:-0}"
-imports="$(get_count import)"; imports="${imports:-0}"
-
-# Guard against a trivially-clean plan: discovery must have found the golden
-# resources. Their attribute values retain the "e2e-golden" prefix.
-seeded_marker="e2e-golden"
-if ! grep -q "${seeded_marker}" "${plan_out}"; then
-  error "Round-trip FAILED: discovery did not include the seeded resources ('${seeded_marker}'). Empty/partial discovery?"
-  rm -f "${plan_out}"
-  exit 1
-fi
-if [ "${imports}" -lt 1 ]; then
-  error "Round-trip FAILED: no import blocks generated — nothing was discovered."
-  rm -f "${plan_out}"
-  exit 1
-fi
-rm -f "${plan_out}"
-
-if [ "${add}" -ne 0 ] || [ "${change}" -ne 0 ] || [ "${destroy}" -ne 0 ]; then
-  error "Round-trip FAILED: generated config shows drift (add=${add} change=${change} destroy=${destroy})."
-  exit 1
-fi
-
-info "spa_manager discovery round-trip PASSED (imports=${imports}, 0 add/change/destroy, seeded resources present). Teardown will run next."
+info "spa_manager discovery round-trip PASSED for both the literal and -ExtractLocals passes. Teardown will run next."
