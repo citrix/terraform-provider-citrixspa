@@ -21,7 +21,7 @@ Contributor reference for the Citrix Secure Private Access Terraform provider.
 
 ```bash
 make build       # Produces ./terraform-provider-citrixspa
-make install     # Installs to ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.0/<os>_<arch>/
+make install     # Installs to ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.1/<os>_<arch>/
 make test        # Unit tests
 make testacc     # Acceptance tests
 make fmt         # go fmt + terraform fmt

@@ -1762,23 +1762,116 @@ type RoutingDomainsResponse struct {
 	Offset         int             `json:"offset,omitempty"`
 }
 
-// GetRoutingDomains retrieves a list of routing domains
+// routingDomainsPageSize is the most entries /routingDomains returns in one
+// response. Known backend limitation: a request without a limit silently
+// returns only the first 4000 entries (totalNum still reports the real count),
+// so larger tenants have to be paged.
+const routingDomainsPageSize = 4000
+
+// routingDomainsMaxPages bounds the paging loop so a backend that keeps
+// returning full pages cannot spin forever. A var only so tests can lower it.
+var routingDomainsMaxPages = 1000
+
+// GetRoutingDomains retrieves routing domains with the API's own offset/limit
+// semantics: `limit` is an exclusive end index, so the result is entries
+// [offset, limit), and a negative limit means every entry from offset on.
+//
+// The backend serves at most routingDomainsPageSize entries per request, so
+// windows larger than that (including "every entry") are fetched page by page,
+// each page starting right after the last entry received, until limit or
+// totalNum is reached. Smaller windows go to the API unchanged in a single
+// request.
+//
+// Paging is offset-based, so it is only as consistent as the tenant is stable
+// while it runs: an entry added mid-listing can shift an earlier one into the
+// next page (the repeat is dropped), and an entry deleted mid-listing shifts a
+// later one back past the offset, where it is missed.
 func (c *APIClient) GetRoutingDomains(ctx context.Context, offset, limit int) (*RoutingDomainsResponse, error) {
 	tflog.Debug(ctx, "spa-terraform-provider: APIClient.GetRoutingDomains called directly", map[string]any{
 		"offset": offset,
 		"limit":  limit,
 	})
-	params := url.Values{}
-	params.Add("offset", fmt.Sprintf("%d", offset))
-	// Only add limit parameter if it's not negative (negative means no limit)
-	if limit >= 0 {
-		params.Add("limit", fmt.Sprintf("%d", limit))
+
+	if limit >= 0 && limit-offset <= routingDomainsPageSize {
+		return c.getRoutingDomainsPage(ctx, offset, limit)
 	}
 
-	path := "/routingDomains"
-	if len(params) > 0 {
-		path += "?" + params.Encode()
+	result := &RoutingDomainsResponse{Offset: offset}
+	seen := make(map[string]struct{})
+	start := offset
+	for page := 0; ; page++ {
+		// Fail rather than return a partial list as if it were complete.
+		if page == routingDomainsMaxPages {
+			return nil, fmt.Errorf("routing domains: stopped after %d pages at offset %d of %d", page, start, result.Total)
+		}
+
+		end := start + routingDomainsPageSize
+		if limit >= 0 {
+			end = min(end, limit)
+		}
+		requested := end - start
+
+		resp, err := c.getRoutingDomainsPage(ctx, start, end)
+		if err != nil {
+			return nil, err
+		}
+		result.Total = resp.Total
+		// Never take more than the window asked for, should the backend ever
+		// read limit as a page size instead of an end index.
+		items := resp.RoutingDomains
+		if len(items) > requested {
+			items = items[:requested]
+		}
+
+		// FQDN is the routing domain's identity; drop entries an insertion
+		// mid-listing pushed into this page a second time.
+		for _, rd := range items {
+			if _, dup := seen[rd.FQDN]; dup {
+				continue
+			}
+			seen[rd.FQDN] = struct{}{}
+			result.RoutingDomains = append(result.RoutingDomains, rd)
+		}
+		start += len(items)
+
+		if len(items) == 0 || (limit >= 0 && start >= limit) {
+			break
+		}
+		// totalNum is the tenant-wide count, so trust it over a short page: if
+		// the backend's real per-request cap is below routingDomainsPageSize,
+		// the next page picks up where this one stopped instead of silently
+		// returning a partial list. Without totalNum, a short page is the only
+		// end-of-data signal.
+		if resp.Total > 0 {
+			if start >= resp.Total {
+				break
+			}
+		} else if len(items) < requested {
+			break
+		}
 	}
+	result.Count = len(result.RoutingDomains)
+
+	tflog.Debug(ctx, "spa-terraform-provider: APIClient.GetRoutingDomains paged", map[string]any{
+		"count": result.Count,
+		"total": result.Total,
+	})
+	return result, nil
+}
+
+// getRoutingDomainsPage issues a single /routingDomains list request.
+//
+// The backend treats `limit` as an exclusive end index, not a page size: it
+// returns entries [offset, limit), errors when limit < offset, caps the window
+// at routingDomainsPageSize, and with no limit returns only the first
+// routingDomainsPageSize entries. So entries 4000-7999 are
+// offset=4000&limit=8000.
+func (c *APIClient) getRoutingDomainsPage(ctx context.Context, offset, limit int) (*RoutingDomainsResponse, error) {
+	params := url.Values{}
+	params.Add("offset", fmt.Sprintf("%d", offset))
+	params.Add("limit", fmt.Sprintf("%d", limit))
+
+	path := "/routingDomains?" + params.Encode()
 
 	tflog.Debug(ctx, "spa-terraform-provider: APIClient.GetRoutingDomains calling API", map[string]any{
 		"method": "GET",

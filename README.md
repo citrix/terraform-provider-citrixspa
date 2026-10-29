@@ -226,7 +226,7 @@ cp test-local-sp/terraform.tfvars.example test-local-sp/terraform.tfvars
 The script performs these steps automatically:
 
 1. `make build` — compiles the provider binary
-2. `make install` — copies the binary to `~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.0/<os>_<arch>/`
+2. `make install` — copies the binary to `~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.1/<os>_<arch>/`
 3. `./generate-terraformrc.sh` — creates a `.terraformrc` file that tells Terraform to use the local binary instead of downloading from the registry
 4. `terraform init -reconfigure` — initializes Terraform with the local provider
 5. `terraform validate` — validates the configuration

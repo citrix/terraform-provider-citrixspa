@@ -16,10 +16,15 @@ For more details on the underlying API, see the [Application Domains API documen
 # Fetch all routing domains
 data "citrixspa_routing_domains" "all" {}
 
-# Fetch with pagination
+# Fetch with pagination: `limit` is an end index, so these are entries 0-49 and 50-99
 data "citrixspa_routing_domains" "page" {
   offset = 0
   limit  = 50
+}
+
+data "citrixspa_routing_domains" "next_page" {
+  offset = 50
+  limit  = 100
 }
 ```
 
@@ -27,8 +32,8 @@ data "citrixspa_routing_domains" "page" {
 
 ### Optional
 
-- `offset` (Number) Offset for pagination. Defaults to `0`.
-- `limit` (Number) Maximum number of results to return. Defaults to all results when omitted.
+- `offset` (Number) Index of the first routing domain to return. Defaults to `0`.
+- `limit` (Number) Exclusive end index, matching the SPA API: the result is routing domains `[offset, limit)`. For example, `offset = 100, limit = 150` returns 50 entries, and a `limit` lower than `offset` is rejected by the API. This is **not** a result count. Defaults to all results from `offset` on when omitted.
 
 ### Read-Only
 

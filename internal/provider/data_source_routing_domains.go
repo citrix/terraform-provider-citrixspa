@@ -43,11 +43,11 @@ func (d *RoutingDomainsDataSource) Schema(ctx context.Context, req datasource.Sc
 
 		Attributes: map[string]schema.Attribute{
 			"offset": schema.Int64Attribute{
-				MarkdownDescription: "Offset for pagination",
+				MarkdownDescription: "Index of the first routing domain to return. Defaults to `0`.",
 				Optional:            true,
 			},
 			"limit": schema.Int64Attribute{
-				MarkdownDescription: "Limit for pagination",
+				MarkdownDescription: "Exclusive end index, matching the API: the result is routing domains `[offset, limit)`, so `offset = 100, limit = 150` returns 50 entries, and `limit` lower than `offset` is an API error. This is not a result count. Omit it to return every routing domain from `offset` on.",
 				Optional:            true,
 			},
 			"total": schema.Int64Attribute{
@@ -135,8 +135,8 @@ func (d *RoutingDomainsDataSource) Read(ctx context.Context, req datasource.Read
 		offset = int(data.Offset.ValueInt64())
 	}
 
-	// Set limit to -1 (no limit) if not specified
-	// Negative values mean no limit parameter will be sent to API
+	// Set limit to -1 if not specified; a negative limit makes the client page
+	// through every routing domain from offset on
 	limit := -1
 	if !data.Limit.IsNull() {
 		limit = int(data.Limit.ValueInt64())

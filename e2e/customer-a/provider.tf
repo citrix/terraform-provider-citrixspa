@@ -2,7 +2,7 @@ terraform {
   required_providers {
     citrixspa = {
       source  = "registry.terraform.io/citrix/citrixspa"
-      version = "1.2.0"
+      version = "1.2.1"
     }
   }
 }

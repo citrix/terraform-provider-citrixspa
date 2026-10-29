@@ -42,8 +42,9 @@ data "citrixspa_routing_domains" "all" {
 }
 
 // testAccRoutingDomainsDataSourcePaginationConfig creates one routing domain
-// resource and reads it back with offset=0, limit=1 so the pagination limit
-// is verified against a known-present item.
+// resource and reads the window [offset=0, limit=1), i.e. the first entry, so
+// the pagination limit is verified against a known-present item. limit is an
+// exclusive end index, not a count.
 func testAccRoutingDomainsDataSourcePaginationConfig(fqdn string) string {
 	return fmt.Sprintf(`
 resource "citrixspa_routing_domain" "pagination_test" {
@@ -64,11 +65,12 @@ data "citrixspa_routing_domains" "paged" {
 `, fqdn)
 }
 
-// testAccRoutingDomainsDataSourceOffsetConfig creates two routing domain
+// testAccRoutingDomainsDataSourceOffsetConfig creates three routing domain
 // resources and exposes two overlapping paginated data source reads so the
-// sliding-window relationship between offset=0/limit=2 and offset=1/limit=2
-// can be verified.
-func testAccRoutingDomainsDataSourceOffsetConfig(fqdn1, fqdn2 string) string {
+// sliding-window relationship between [offset=0, limit=2) and
+// [offset=1, limit=3) can be verified. limit is an exclusive end index, so
+// both windows hold two entries.
+func testAccRoutingDomainsDataSourceOffsetConfig(fqdn1, fqdn2, fqdn3 string) string {
 	return fmt.Sprintf(`
 resource "citrixspa_routing_domain" "offset_1" {
   fqdn         = %q
@@ -90,18 +92,28 @@ resource "citrixspa_routing_domain" "offset_2" {
   location_ids = []
 }
 
+resource "citrixspa_routing_domain" "offset_3" {
+  fqdn         = %q
+  type         = "internal"
+  app_type     = "web"
+  comment      = "Terraform acceptance test offset domain 3"
+  flag         = "enabled"
+  ip           = false
+  location_ids = []
+}
+
 data "citrixspa_routing_domains" "page1" {
   offset     = 0
   limit      = 2
-  depends_on = [citrixspa_routing_domain.offset_1, citrixspa_routing_domain.offset_2]
+  depends_on = [citrixspa_routing_domain.offset_1, citrixspa_routing_domain.offset_2, citrixspa_routing_domain.offset_3]
 }
 
 data "citrixspa_routing_domains" "page2" {
   offset     = 1
-  limit      = 2
-  depends_on = [citrixspa_routing_domain.offset_1, citrixspa_routing_domain.offset_2]
+  limit      = 3
+  depends_on = [citrixspa_routing_domain.offset_1, citrixspa_routing_domain.offset_2, citrixspa_routing_domain.offset_3]
 }
-`, fqdn1, fqdn2)
+`, fqdn1, fqdn2, fqdn3)
 }
 
 // testAccRoutingDomainsDataSourceRequiredFieldsConfig creates one routing
@@ -281,8 +293,8 @@ func TestAccRoutingDomainsDataSource_withResource(t *testing.T) {
 }
 
 // TestAccRoutingDomainsDataSource_pagination creates one routing domain,
-// requests a single page of limit=1 and verifies that pagination meta fields
-// are set correctly and exactly 1 item is returned.
+// requests the window [offset=0, limit=1) and verifies that pagination meta
+// fields are set correctly and exactly 1 item is returned.
 func TestAccRoutingDomainsDataSource_pagination(t *testing.T) {
 	fqdn := "tf-acc-ds-rd-pagination.example.com"
 
@@ -300,7 +312,7 @@ func TestAccRoutingDomainsDataSource_pagination(t *testing.T) {
 					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.pagination_test"),
 					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.paged", "offset", "0"),
 					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.paged", "limit", "1"),
-					// Exactly 1 item should be returned with limit=1
+					// [0, 1) holds exactly 1 item
 					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.paged", "routing_domains.#", "1"),
 					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.paged", "total"),
 				),
@@ -309,39 +321,44 @@ func TestAccRoutingDomainsDataSource_pagination(t *testing.T) {
 	})
 }
 
-// TestAccRoutingDomainsDataSource_offset creates two routing domains, then
-// fetches two overlapping pages and confirms the sliding-window relationship:
-// page1[offset=0,limit=2][1] must equal page2[offset=1,limit=2][0].
-// Creating the domains explicitly makes the test self-contained and prevents
-// a false positive when the environment has fewer than 2 existing domains.
+// TestAccRoutingDomainsDataSource_offset creates three routing domains, then
+// fetches two overlapping two-entry windows and confirms the sliding-window
+// relationship: page1[offset=0,limit=2][1] must equal page2[offset=1,limit=3][0].
+// limit is an exclusive end index, not a count. Creating the domains
+// explicitly makes the test self-contained and prevents a false positive when
+// the environment has fewer than 3 existing domains.
 func TestAccRoutingDomainsDataSource_offset(t *testing.T) {
 	fqdn1 := "tf-acc-ds-rd-offset-1.example.com"
 	fqdn2 := "tf-acc-ds-rd-offset-2.example.com"
+	fqdn3 := "tf-acc-ds-rd-offset-3.example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccCleanupRoutingDomain(fqdn1)
 			testAccCleanupRoutingDomain(fqdn2)
+			testAccCleanupRoutingDomain(fqdn3)
 		},
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckRoutingDomainDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccRoutingDomainsDataSourceOffsetConfig(fqdn1, fqdn2),
+				Config: testAccRoutingDomainsDataSourceOffsetConfig(fqdn1, fqdn2, fqdn3),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					// both resources must exist
+					// all resources must exist
 					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.offset_1"),
 					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.offset_2"),
+					testAccCheckRoutingDomainExistsInAPI("citrixspa_routing_domain.offset_3"),
 					// pagination attributes reflected in state
 					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page1", "offset", "0"),
 					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page1", "limit", "2"),
 					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page2", "offset", "1"),
-					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page2", "limit", "2"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page2", "limit", "3"),
 					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.page1", "total"),
 					resource.TestCheckResourceAttrSet("data.citrixspa_routing_domains.page2", "total"),
-					// page1 must return exactly 2 items (limit=2 and >=2 domains exist)
+					// both windows must return exactly 2 items ([0, 2) and [1, 3), >=3 domains exist)
 					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page1", "routing_domains.#", "2"),
+					resource.TestCheckResourceAttr("data.citrixspa_routing_domains.page2", "routing_domains.#", "2"),
 					// sliding-window: page1[1] and page2[0] must be the same domain
 					resource.TestCheckResourceAttrPair(
 						"data.citrixspa_routing_domains.page1", "routing_domains.1.fqdn",

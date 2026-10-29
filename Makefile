@@ -24,8 +24,8 @@ build:
 .PHONY: install
 install: build
 	@echo "Installing provider for $(PLUGIN_ARCH) architecture..."
-	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.0/$(PLUGIN_ARCH)
-	cp terraform-provider-citrixspa ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.0/$(PLUGIN_ARCH)/
+	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.1/$(PLUGIN_ARCH)
+	cp terraform-provider-citrixspa ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.1/$(PLUGIN_ARCH)/
 	@echo "Provider installed successfully for $(PLUGIN_ARCH)"
 
 # Format code
@@ -67,8 +67,8 @@ release:
 .PHONY: dev-install
 dev-install: build
 	@echo "Installing provider for development ($(PLUGIN_ARCH))..."
-	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.0/$(PLUGIN_ARCH)
-	cp terraform-provider-citrixspa ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.0/$(PLUGIN_ARCH)/
+	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.1/$(PLUGIN_ARCH)
+	cp terraform-provider-citrixspa ~/.terraform.d/plugins/registry.terraform.io/citrix/citrixspa/1.2.1/$(PLUGIN_ARCH)/
 	@echo "Development provider installed successfully for $(PLUGIN_ARCH)"
 
 # Install provider for local filesystem testing
@@ -76,8 +76,8 @@ dev-install: build
 install-local: build
 	@echo "Installing provider for local filesystem testing ($(PLUGIN_ARCH))..."
 	$(eval TERRAFORM_PLUGIN_DIR := $(if $(TF_PLUGIN_DIR),$(TF_PLUGIN_DIR),$(HOME)/.terraform.d/plugins))
-	mkdir -p $(TERRAFORM_PLUGIN_DIR)/registry.terraform.io/citrix/citrixspa/1.2.0/$(PLUGIN_ARCH)
-	cp terraform-provider-citrixspa $(TERRAFORM_PLUGIN_DIR)/registry.terraform.io/citrix/citrixspa/1.2.0/$(PLUGIN_ARCH)/
+	mkdir -p $(TERRAFORM_PLUGIN_DIR)/registry.terraform.io/citrix/citrixspa/1.2.1/$(PLUGIN_ARCH)
+	cp terraform-provider-citrixspa $(TERRAFORM_PLUGIN_DIR)/registry.terraform.io/citrix/citrixspa/1.2.1/$(PLUGIN_ARCH)/
 	@echo "Provider installed to $(TERRAFORM_PLUGIN_DIR) for $(PLUGIN_ARCH)"
 	@echo "Generating .terraformrc file..."
 	@./generate-terraformrc.sh

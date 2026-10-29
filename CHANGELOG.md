@@ -200,6 +200,16 @@ keep the wording clear and user-facing.
 
 ### Fixed
 
+- **`citrixspa_routing_domains` now returns every routing domain on tenants with more than 4000.**
+  The SPA API returns at most 4000 routing domains per request, even when no `limit` is set, while
+  `total` still reports the full count. The data source made a single request, so on larger tenants
+  every routing domain past the first 4000 was silently dropped — and with it from the
+  resource-listing tool's `spa_resources.tf`, `imports.tf` and `management_summary.md`. Requests
+  that span more than 4000 entries, including the default "all routing domains", are now fetched in
+  pages until `total` is reached. `offset`/`limit` keep the API's meaning: `limit` is an exclusive
+  end index (`offset = 100, limit = 150` returns 50 entries), not a result count; the data-source
+  documentation now says so.
+
 - **Resource-listing tool: `${` and `%{` in tenant data are no longer evaluated as Terraform
   templates.** A name or description containing `${...}` or `%{...}` — an application description,
   a group display name — was written into `spa_resources.tf` unescaped. The result is still valid
